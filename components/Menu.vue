@@ -23,6 +23,7 @@
 
     const isMobile = ref(false);
     const width = ref(450);
+    
     const windowWidth = ref(window.innerWidth);
 
     const useIsMobile = computed(() => windowWidth.value < 450);
@@ -49,11 +50,22 @@
     const returnMenu = () => {
         document.querySelector('#menu').style.right = '0';
     }
+    const isChannel = ref(false);
     const selectUser = (userId) => {
         
         console.log('selectedUserId ', userId);
         selectedUserId.value = userId;
+        isChannel.value = false;
         check.value = true; 
+
+        if (useIsMobile.value) {
+            document.querySelector('#menu').style.right = '100%';
+        }
+    }
+    const selectChannel = (channelId) => {
+        selectedUserId.value = channelId;
+        isChannel.value = true;
+        check.value = true;
 
         if (useIsMobile.value) {
             document.querySelector('#menu').style.right = '100%';
@@ -128,11 +140,20 @@
             .from('profiles')
             .select('*')
         if (error) throw error;
-
+    let {data:channels, error:channelsError} = await supabase
+        .from('channels')
+        .select('*')
+        console.log(channels);
+        
+        const channelsSearched = ref([]);
     const newSearchUser = () => {
         try {
             const filteredUsers = data.filter(user => user.username.startsWith(searchTerm));
             users.value = filteredUsers;
+
+            const filteredChannels = channels.filter(channel => channel.name_channel.startsWith(searchTerm));
+            channelsSearched.value = filteredChannels;
+            console.log(channelsSearched.value);
 
         } catch (error) {
             console.error('Ошибка поиска:', error);
@@ -142,6 +163,7 @@
             document.querySelector('#menu-body').scrollTop = document.querySelector('#menu-body').scrollHeight;
         }
     };
+
 
     watch(user, () => {
         avatar.value = user.value.user_metadata.avatar_url;
@@ -158,21 +180,26 @@
         .channel('newMessages')
         .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, async payload => {
             // loadMessages();
+            if (payload.new.receiver_id === null) {
+                loadChannels();
+                const bebs = document.querySelectorAll('.menu-switch-button');
+                bebs[1].style.backgroundColor = '#f84b4b';
+            }
             if (payload.new.receiver_id === user.value.id || payload.new.sender_id === user.value.id) {
                 checkChats();
             }
             if (payload.new.receiver_id === user.value.id) {
-                    const {data: userSender, error} = await supabase 
-                        .from('profiles')
-                        .select('username, avatar_url')
-                        .eq('id', payload.new.sender_id)
-                        .single();
-                    if (error) throw error
-                    showNotification(userSender.username, {
-                        body: payload.new.text,
-                        icon: userSender.avatar_url,
-                    })
-                }
+                const {data: userSender, error} = await supabase 
+                    .from('profiles')
+                    .select('username, avatar_url')
+                    .eq('id', payload.new.sender_id)
+                    .single();
+                if (error) throw error
+                showNotification(userSender.username, {
+                    body: payload.new.text,
+                    icon: userSender.avatar_url,
+                })
+            }
         })
         .subscribe()
 
@@ -211,12 +238,6 @@
             document.querySelector('#menu-header-title').style.display = 'none';
             document.querySelector('#menu-header-avatar').style.display = 'none';
             document.querySelector('#menu-search').style.display = 'none';
-            document.querySelectorAll('.menu-body-dialog-info').forEach(element => {
-                element.style.display = 'none';
-            });
-            document.querySelectorAll('.menu-body-dialog-time').forEach(element => {
-                element.style.display = 'none';
-            })
             document.querySelector('.menu-body-sep').style.display = 'none';
 
         }
@@ -225,17 +246,45 @@
             document.querySelector('#menu-header-title').style.display = 'flex';
             document.querySelector('#menu-header-avatar').style.display = 'flex';
             document.querySelector('#menu-search').style.display = 'flex';
-            document.querySelectorAll('.menu-body-dialog-info').forEach(element => {
-                element.style.display = 'flex';
-            });
-            document.querySelectorAll('.menu-body-dialog-time').forEach(element => {
-                element.style.display = 'flex';
-            })
             document.querySelector('.menu-body-sep').style.display = 'flex';
         }
     }
     const blur = ref(await localForage.getItem('blur'));
 
+    const switchChannels = ref(false);
+    const channelsUsers = ref([]);
+    const lastChannelMessages = ref([]);
+    const loadChannels = async () => {
+        const {data,error} = await supabase
+            .from('profiles')
+            .select('channels')
+            .eq('id', user.value.id)
+            .single();
+        const {data:getChannels, error:getError} = await supabase
+            .from('channels')
+            .select('*')
+            .in('id', data.channels);
+        channelsUsers.value = getChannels;
+
+        lastChannelMessages.value = [];
+        for (let i = 0; i < channelsUsers.value.length; i++) {
+            const {data: lastMessage, error: lastMessageError} = await supabase
+                .from('messages')
+                .select('*')
+                .eq('sender_id', channelsUsers.value[i].id)
+                .order('timestamp', { ascending: false })
+                .limit(1);
+            if (lastMessage.length > 0) {
+                lastChannelMessages.value.push(lastMessage[0].text);
+            }
+        }
+        channelsUsers.value.forEach((element, index) => {
+            element.lastMessage = lastChannelMessages.value[index];
+        })
+        console.log(channelsUsers.value);
+
+    }
+    loadChannels();
 </script>
 
 <template>        
@@ -244,7 +293,6 @@
     <VueDraggableResizable v-if="!isMobile"
         class-name-handle="handle"
         class-name="active"
-
         ref="resiz"
         :prevent-deactivation="true" 
         :active="true" 
@@ -275,19 +323,37 @@
             <input id="menu-search-input" autocomplete="off" v-model="searchTerm" @input="newSearchUser()" type="text" placeholder="Найдите кого-нибудь">
         </div>
 
+        <div v-if="!switched" id="menu-switch">
+            <div @click="switchChannels = false;" class="menu-switch-button" :class="{ 'selected-channel': switchChannels === false}">Контакты</div>
+            <div @click="switchChannels = true" class="menu-switch-button" :class="{ 'selected-channel': switchChannels === true}">Каналы</div>
+        </div>
+        
+        <div v-else id="menu-switch">
+            <div @click="switchChannels = false" class="switched-switch" :class="{ 'selected-channel-switch': switchChannels === false}"></div>
+            <div @click="switchChannels = true" class="switched-switch" :class="{ 'selected-channel-switch': switchChannels === true}" ></div>
+        </div>
+
         <Loading v-if="loading"></Loading>
         <div id="menu-body" v-else>
-            <div class="menu-body-dialog" v-for="chat in chats" :key="chat.id" @click="selectUser(chat.id)" :class="{ 'selected': selectedUserId === chat.id}">
-                <!-- <ClientOnly> -->
-                    <div class="menu-body-dialog-avatar" :style="{ backgroundImage: `url(${chat.avatar_url || 'error404.gif'})`, border: `${moment(moment()).diff(chat.online_at, 'minutes') <= 5 ? '2px solid #6ed1f0' : ''}`}" :class="{'selected-back': selectedUserId === chat.id && switched}"></div>
-                <!-- </ClientOnly> --> 
-                <div class="menu-body-dialog-info">
-                    <span class="menu-body-dialog-info-name">{{ chat.username }} {{ chat.official ? '✔️' : '' }}</span>
-
-                    <!-- <span class="menu-body-dialog-info-name" :class="{ 'unread': !chat.checkedMsg &&  chat.receiver_id === user.id}">{{ chat.username }}</span> -->
-                    <span class="menu-body-dialog-info-message"><b :style="{ 'color': '#fff'}">{{ chat.receiver_id === user.id ? '' : "Вы: "}} </b>{{ chat.lastMessage }} {{chat.attachsLength ? `(Вложение)` : ' '  }}</span>
+            <div v-if="switchChannels === false" class="menu-body-dialog" v-for="chat in chats" 
+                :key="chat.id" @click="selectUser(chat.id)" 
+                :class="{ 'selected': selectedUserId === chat.id}">
+                    <div class="menu-body-dialog-avatar" :style="{ 
+                        backgroundImage: `url(${chat.avatar_url || 'error404.gif'})`, 
+                        border: `${moment(moment()).diff(chat.online_at, 'minutes') <= 5 ? '2px solid #6ed1f0' : ''}`
+                    }" 
+                    :class="{'selected-back': selectedUserId === chat.id && switched}"></div>
+                <div class="menu-body-dialog-info" v-if="!switched">
+                    <div class="menu-body-dialog-info-name">
+                        {{ chat.username }} 
+                        <div class="menu-body-dialog-info-name-verifed" v-if="chat.official"></div>
+                    </div>
+                    <span class="menu-body-dialog-info-message">
+                        <b :style="{ 'color': '#fff'}">{{ chat.receiver_id === user.id ? '' : "Вы: "}} </b>
+                        {{ chat.lastMessage }} {{chat.attachsLength ? `(Вложение)` : ' '  }}
+                    </span>
                 </div>
-                <div class="menu-body-dialog-time">
+                <div class="menu-body-dialog-time" v-if="!switched">
                     <div class="menu-body-dialog-checked" v-show="chat.checkedMsg === true && chat.receiver_id != user.id"></div>
                     <span class="menu-body-dialog-time-time">
                         {{
@@ -295,21 +361,43 @@
                             moment(chat.lastMessageTimestamp).format('HH:mm') : moment(chat.lastMessageTimestamp).format('dd')   
                         }}
                     </span>
-
                 </div>
             </div>
+
+            <div v-else class="menu-body-dialog" v-for="channel in channelsUsers" :key="channel.id" @click="selectChannel(channel.id)" :class="{ 'selected': selectedUserId === channel.id}">
+                <!-- <div class="menu-body-dialog-avatar" :style="{ backgroundImage: `url(${user.avatar_url})` }"></div> -->
+                <div class="menu-body-dialog-avatar" :style="{ backgroundImage: `url(${channel.avatar_url || 'error404.gif'})`}" :class="{'selected-back': selectedUserId === channel.id && switched}"></div>
+
+                <div class="menu-body-dialog-info" v-if="!switched">
+                    <div class="menu-body-dialog-info-name">{{ channel.name_channel }}
+                        <div class="menu-body-dialog-info-name-verifed" v-if="channel.official"></div>
+                    </div>
+                    <span class="menu-body-dialog-info-message">{{ channel.lastMessage || 'Нет сообщений'}}</span>
+                </div>
+
+            </div>
+            
             <div class="menu-body-sep">
                 <hr>
-                <span>Друзей больше нет</span>
+                <span>Больше ничего нет</span>
             </div>
 
             <!-- for search -->
-
+            <span v-if="users.length > 0 && searchTerm != ''" id="menu-error">Люди</span>
             <div class="menu-body-dialog" v-if="users.length > 0 && searchTerm != ''" v-for="user in users" :key="user.id" @click="selectUser(user.id), searchTerm = ''">
                 <div class="menu-body-dialog-avatar" :style="{ backgroundImage: `url(${user.avatar_url})` }"></div>
                 <div class="menu-body-dialog-info">
                     <span class="menu-body-dialog-info-name">{{ user.username }}</span>
                     <span class="menu-body-dialog-info-message">{{ user.description }}</span>
+                </div>
+            </div>
+
+            <span v-if="channelsSearched.length > 0 && searchTerm != ''" id="menu-error">Каналы</span>
+            <div class="menu-body-dialog" v-if="channelsSearched.length > 0 && searchTerm != ''" v-for="user in channelsSearched" :key="user.id" @click="selectChannel(user.id), searchTerm = ''">
+                <div class="menu-body-dialog-avatar" :style="{ backgroundImage: `url(${user.avatar_url})` }"></div>
+                <div class="menu-body-dialog-info">
+                    <span class="menu-body-dialog-info-name">{{ user.name_channel }}</span>
+                    <span class="menu-body-dialog-info-message">{{user.subs.length === 1 ? user.subs.length + ' подписчик' : ''  || user.subs.length < 5 ? user.subs.length + ' подписчика' : user.subs.length + ' подписчиков'}}</span>
                 </div>
             </div>
 
@@ -331,20 +419,42 @@
         </div>
 
         <div id="menu-search">
-            <input id="menu-search-input" v-model="searchTerm" @input="newSearchUser(), console.log(searchTerm)" type="text" placeholder="Найдите кого-нибудь">
+            <input id="menu-search-input" v-model="searchTerm" @input="newSearchUser(), newSearchChannel(), console.log(searchTerm)" type="text" placeholder="Найдите кого-нибудь">
+        </div>
+
+        <div id="menu-switch">
+            <div @click="switchChannels = false" class="menu-switch-button" :class="{ 'selected-channel': switchChannels === false}">Контакты</div>
+            <div @click="switchChannels = true" class="menu-switch-button" :class="{ 'selected-channel': switchChannels === true}">Каналы</div>
         </div>
 
         <Loading v-if="loading"></Loading>
         <div id="menu-body" v-else>
-            <div class="menu-body-dialog" v-for="chat in chats" :key="chat.id" @click="selectUser(chat.id)" :class="{ 'selected': selectedUserId === chat.id}">
-                <!-- <ClientOnly> -->
-                    <div class="menu-body-dialog-avatar" :style="{ backgroundImage: `url(${chat.avatar_url || 'error404.gif'})` }"></div>
-                <!-- </ClientOnly> -->
+            <div v-if="switchChannels === true" class="menu-body-dialog" 
+                v-for="channel in channelsUsers" 
+                :key="channel.id" @click="selectChannel(channel.id)" 
+                :class="{ 'selected': selectedUserId === channel.id}">
+                <div class="menu-body-dialog-avatar" 
+                    :style="{ backgroundImage: `url(${channel.avatar_url || 'error404.gif'})`}" 
+                    :class="{'selected-back': selectedUserId === channel.id && switched}"></div>
                 <div class="menu-body-dialog-info">
-                    <span class="menu-body-dialog-info-name">{{ chat.username }}</span>
-
-                    <!-- <span class="menu-body-dialog-info-name" :class="{ 'unread': !chat.checkedMsg &&  chat.receiver_id === user.id}">{{ chat.username }}</span> -->
-                    <span class="menu-body-dialog-info-message"><b :style="{ 'color': '#fff'}">{{ chat.receiver_id === user.id ? '' : "Вы: "}} </b>{{ chat.lastMessage }} {{chat.attachsLength ? `(Вложение)` : ' '  }}</span>
+                    <div class="menu-body-dialog-info-name">{{ channel.name_channel }}
+                        <div class="menu-body-dialog-info-name-verifed" v-if="channel.official"></div>
+                    </div>
+                    <span class="menu-body-dialog-info-message">{{ channel.lastMessage || 'loading'}}</span>
+                </div>
+            </div>
+            <div v-else class="menu-body-dialog" v-for="chat in chats" :key="chat.id" @click="selectUser(chat.id)" :class="{ 'selected': selectedUserId === chat.id}">
+                    <div class="menu-body-dialog-avatar" :style="{ backgroundImage: `url(${chat.avatar_url || 'error404.gif'})` }"></div>
+                <div class="menu-body-dialog-info">
+                    <div class="menu-body-dialog-info-name">
+                        {{ chat.username }} 
+                        <div class="menu-body-dialog-info-name-verifed" v-if="chat.official"></div>
+                    </div>
+                    <span class="menu-body-dialog-info-message">
+                        <b :style="{ 'color': '#fff'}">
+                        {{ chat.receiver_id === user.id ? '' : "Вы: "}} 
+                    </b>
+                    {{ chat.lastMessage }} {{chat.attachsLength ? `(Вложение)` : ' '  }}</span>
                 </div>
                 <div class="menu-body-dialog-time">
                     <div class="menu-body-dialog-checked" v-show="chat.checkedMsg === true && chat.receiver_id != user.id"></div>
@@ -354,15 +464,17 @@
                             moment(chat.lastMessageTimestamp).format('HH:mm') : moment(chat.lastMessageTimestamp).format('dd')   
                         }}
                     </span>
-
                 </div>
             </div>
+
+            
             <div class="menu-body-sep">
                 <hr>
-                <span>Друзей больше нет</span>
+                <span>Больше ничего нет</span>
             </div>
 
             <!-- for search -->
+            <span v-if="users.length > 0 && searchTerm != ''" id="menu-error">Люди</span>
             <div class="menu-body-dialog" v-if="users.length > 0 && searchTerm != ''" v-for="user in users" :key="user.id" @click="selectUser(user.id), searchTerm = ''">
                 <div class="menu-body-dialog-avatar" :style="{ backgroundImage: `url(${user.avatar_url})` }"></div>
                 <div class="menu-body-dialog-info">
@@ -370,6 +482,16 @@
                     <span class="menu-body-dialog-info-message">{{ user.description }}</span>
                 </div>
             </div>
+
+            <span v-if="channelsSearched.length > 0 && searchTerm != ''" id="menu-error">Каналы</span>
+            <div class="menu-body-dialog" v-if="channelsSearched.length > 0 && searchTerm != ''" v-for="user in channelsSearched" :key="user.id" @click="selectChannel(user.id), searchTerm = ''">
+                <div class="menu-body-dialog-avatar" :style="{ backgroundImage: `url(${user.avatar_url})` }"></div>
+                <div class="menu-body-dialog-info">
+                    <span class="menu-body-dialog-info-name">{{ user.name_channel }}</span>
+                    <span class="menu-body-dialog-info-message">{{user.subs.length === 1 ? user.subs.length + ' подписчик' : ''  || user.subs.length < 5 ? user.subs.length + ' подписчика' : user.subs.length + ' подписчиков'}}</span>
+                </div>
+            </div>
+
             <span v-if="searchTerm != '' && users.length == 0" id="menu-error">Ничего не найдено</span>
             
         </div>
@@ -378,6 +500,7 @@
     <ClientOnly v-if="check">
         <Dialog
             :userId = "selectedUserId"
+            :isChannel = "isChannel"
             @close="check = false, selectedUserId = '', returnMenu()"
         ></Dialog>
     </ClientOnly>
@@ -385,6 +508,24 @@
 
 </template>
 <style lang="scss">
+    .switched-switch {
+        width: 15px;
+        height: 15px;
+        border-radius: 50% ;
+        background-color: #ffffff;
+        transition: .2s ease-in-out;
+        cursor: pointer;
+        opacity: .5;
+
+        &:hover {
+            transition: .2s ease-in-out;
+            opacity: 1;
+        }
+    }
+    .selected-channel-switch {
+        opacity: 1;
+        
+    }
     .handle {
         width: 5px;
         height: 100%;
@@ -410,6 +551,10 @@
     }
     .selected {
         background-color: rgba(255, 255, 255, 0.2);
+    }
+    .selected-channel {
+        background-color: var(--background-block) !important;
+        color: white !important;
     }
     .selected-back {
         border-radius: 25% !important;
@@ -536,6 +681,35 @@
             }
         }
 
+        #menu-switch {
+            width: 100%;
+            display: flex;
+            flex-direction: row;
+            align-items: center;
+            justify-content: center;
+            margin-top: 20px;
+            gap: 10px;
+            @media screen and (max-width: 450px) {
+            }
+            .menu-switch-button {
+                display: flex;
+                flex-direction: row;
+                align-items: center;
+                justify-content: center;
+                cursor: pointer;
+                padding: 5px 10px;
+                border-radius: 10px;
+                background-color: var(--background-block-hover);
+                color: rgba(255, 255, 255, .5);
+                font-size: 15px;
+                transition: all 0.2s;
+                &:hover {
+                    background-color: var(--background-block);
+                    color: white !important;
+                }
+            }
+        }
+
         #menu-body {
             // width: 100%;
             width: 100%;
@@ -602,6 +776,18 @@
                     .menu-body-dialog-info-name {
                         font-size: 20px;
                         font-weight: 500;
+                        display: flex;
+                        align-items: flex-end;
+                        .menu-body-dialog-info-name-verifed {
+                            padding: 10px;
+                            background-image: url('/verifed.svg');
+                            background-size: 100%;
+                            background-repeat: no-repeat;
+                            background-position: center;
+                            width: 10px;
+                            padding: 10px;
+                            margin-left: 5px;
+                        }
                     }
                     .menu-body-dialog-info-message {
                         font-size: 16px;

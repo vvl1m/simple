@@ -107,13 +107,12 @@
         }
         #modal-user-edit {
             z-index: 100;
-            width: 350px;
+            // width: 350px;
             // height: 150px;
             padding: 20px;
             border-radius: 10px;
             background-color: var(--backround);
-
-            // display: flex;
+            display: flex;
             #modal-userEdit {
                 display: flex;
                 flex-direction: column;
@@ -130,7 +129,7 @@
                 }
                 #modal-userEdit-body-dialog-info-nameChange {
                     margin-top: 10px;
-                    width: 130px;
+                    width: 90%;
                     padding: 10px;
                     background-color: var(--background-block);
                     border-radius: 5px;
@@ -144,14 +143,14 @@
                             width: 0px;
                         }
                         100% {
-                            width: 130px;
+                            width: 90%;
                         }
                     }
                 }
                 #modal-userEdit-body-dialog-info-name {
                     font-size: 24px;
                     font-weight: 600;
-                    width: 10px;
+                    width: 90%;
                     border-radius: 10px;
                     margin-top: 5px;
                     padding: 5px;
@@ -165,7 +164,7 @@
                         cursor: pointer;
                         border-radius: 10px;
                         background-color: rgba($color: #fff, $alpha: .1);
-                        width: 130px;
+                        width: 90%;
                         transition: background-color .3s ease;
                         animation: widthIn .3s ease-in-out;
                     }
@@ -174,12 +173,12 @@
                             width: 0px;
                         }
                         100% {
-                            width: 130px;
+                            width: 90%;
                         }
                     }
                     @keyframes widthOut {
                         0% {
-                            width: 130px;
+                            width: 90%;
                         }
                         100% {
                             width: 0px;

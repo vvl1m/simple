@@ -3,7 +3,7 @@
 	const route = useRouter();
 	import localForage from "localforage";
 
-	if (user.value === null) {
+	if (user.value === null && !route.currentRoute.value.path !== '/reset-password') {
 		route.push('/login');	
 	}
 	else {

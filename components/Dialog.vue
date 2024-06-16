@@ -15,7 +15,8 @@ const loading = ref(true);
 let props = defineProps({
     name: String,
     avatar: String,
-    userId: String
+    userId: String,
+    isChannel: Boolean
 });
 import moment from 'moment';
 import 'moment/dist/locale/ru';
@@ -24,6 +25,8 @@ moment.locale('ru');
 const userData = ref(null);
 const checkChat = ref(false);
 const message = ref('');
+const checkViewChannel = ref(false);
+const channelId = ref('');
 
 async function sendMessage() {
     const fileInput = document.querySelector('#fileInput');
@@ -31,13 +34,17 @@ async function sendMessage() {
 
     if (fileInput.files.length > 0) {
         for (const file of fileInput.files) {
-            // const file = fileUploaded;
             const fileName = file.name;
             try {
                 console.log('file', file);
                 const timestamp = Date.now();
                 const uniqueFileName = `${timestamp}-${fileName}`;
-
+                const { data:checkAvaliability, error: erroCheck } = await supabase
+                    .from('files_metadata')
+                    .select('*')
+                if (checkAvaliability.length > 1) {
+                    throw new Error('Лимит по файлам превышен! (теперь файлы платные)');
+                }
                 const { data, error } = supabase
                     .storage
                     .from('attachs')
@@ -56,8 +63,6 @@ async function sendMessage() {
                         },
                     ])
                     .select('*');
-                // const {data:urlAt} = supabase.storage.from('attachs').createSignedUrl(uniqueFileName, 3600);
-                // attachFiles.push(urlAt.publicUrl);
                 attachFiles.push(metadata[0].file_name);
 
                 if (metadataError) {
@@ -65,6 +70,9 @@ async function sendMessage() {
                 }
             } catch (error) {
                 console.error('Ошибка при загрузке файла:', error.message);
+                if (error.message == 'Лимит по файлам превышен! (теперь файлы платные)') {
+                    alert(error.message);
+                }
             }
         };
         fileInput.value = '';
@@ -92,6 +100,23 @@ async function sendMessage() {
     }
 }
 
+async function sendChannelMessage() {
+    const { data: messagesData, error } = await supabase
+        .from('messages')
+        .insert(
+            { sender_id: props.userId, text: message.value },
+        )
+        .select('*');
+
+    if (error) {
+        console.error('Ошибка отправки сообщения: ', error);
+    } else {
+        message.value = '';
+        loadChannelData(props.userId);
+    }
+
+}
+
 const getFileTest = async () => {
     const { data, error } = await supabase
         .from('files_metadata')
@@ -109,7 +134,12 @@ async function subScribe() {
         .channel('room1')
         .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, payload => {
             // console.log('Change received!', payload);
-            loadMessages();
+            if (props.isChannel == true) {
+                loadChannelData(props.userId);
+            }
+            else {
+                loadMessages();
+            }
         })
         .subscribe()
 
@@ -135,7 +165,7 @@ async function loadMessages() {
         const updatedDialogMessages = await Promise.all(dialogMessages.map(async (message) => {
             let attachs = message.attachs || [];
             attachs = await Promise.all(attachs.map(async (attach) => {
-                for (let i = 0; i < 3; i++) { // Попытка 3 раза
+                for (let i = 0; i < 3; i++) { 
                     const { data: attachsData, error: attachsError } = await supabase
                         .storage
                         .from('attachs')
@@ -145,7 +175,7 @@ async function loadMessages() {
                     }
                     console.error('Ошибка при загрузке файла:', attachsError.message);
                 }
-                // Если все попытки неудачны, вернуть URL-адрес изображения по умолчанию
+
                 return "https://i.ibb.co/dmt4VkF/photo-2024-03-17-02-01-51.jpg";
             }));
             return { ...message, attachs };
@@ -216,7 +246,7 @@ async function checkOnline() {
         .channel('online_room')
         .on('presence', { event: 'join' })
         .subscribe(async (status) => {
-            if (status == 'SUBSCRIBED') {
+            if (status == 'SUBSCRIBED' && props.isChannel == false) {
                 const { data, error } = await supabase
                     .from('profiles')
                     .select('online_at,id')
@@ -259,13 +289,68 @@ async function loadUserData(userId) {
         avatar.value = userData.value.avatar_url;
     }
 }
+const subscribed = ref(false);
+const haveAccessToWrite = ref(false);
+
+async function loadChannelData(channelId) {
+    try {
+        const { data:usersSub, error:usersSubError } = await supabase
+        .from('profiles')
+        .select('channels')
+        .eq('id', user.value.id)
+        .single();
+
+        console.log(usersSub);
+    if (usersSub.channels.includes(channelId)) {
+        subscribed.value = true;
+    }
+
+    const { data: channelsData, error } = await supabase
+        .from('channels')
+        .select('*')
+        .eq('id', channelId)
+        .single();
+    channel.value = channelsData;
+    if (channel.value.owner === user.value.id) {
+        haveAccessToWrite.value = true;
+    }
+    else {
+        haveAccessToWrite.value = false;
+    }
+    console.log(haveAccessToWrite.value);
+
+    const { data: channelMessages, error: channelMessagesError } = await supabase
+        .from('messages')
+        .select('*')
+        .eq('sender_id', channelId)
+        .order('timestamp', { ascending: true });
+    allChannelMessages.value = channelMessages;
+
+    console.log(allChannelMessages.value);
+
+    }
+    catch (error) {
+        console.error('Ошибка загрузки данных: ', error);
+    }
+    finally {
+        document.querySelector('#dialog-body').scrollTop = document.querySelector('#dialog-body').scrollHeight;
+
+    }
+
+}
 
 const pat = /(https?:\/\/[^\s]+)/;
 watch(() => props.userId, (newUserId) => {
     if (newUserId) {
-        loadUserData(newUserId);
-        loadMessages();
-        checkOnline();
+        if (props.isChannel == true) {
+            loadChannelData(newUserId);
+        }
+        else {
+            loadUserData(newUserId);
+            loadMessages();
+            checkOnline();
+        }
+
         searchOpened.value = false;
         message.value = '';
     }
@@ -287,6 +372,9 @@ async function waitRead() {
             if (payload.new.sender_id === user.value.id && payload.new.receiver_id === props.userId && payload.new.read_status === true) {
                 loadMessages();
             }
+            if (props.isChannel === true) {
+                loadChannelData(props.userId);
+            }
         })
         .subscribe()
     if (error) throw error
@@ -302,15 +390,60 @@ const getPinnedImgUrl = (event) => {
 }
 const blur = ref(await localForage.getItem('blur'));
 
+const channel = ref([]);
+const allChannelMessages = ref([]);
+
+const subOnChannel = async () => {    
+    const { data:usersSub, error:usersSubError } = await supabase
+        .from('profiles')
+        .select('channels')
+        .eq('id', user.value.id)
+        .single();
+    const {data: channelsData, error: channelsError } = await supabase
+        .from('channels')
+        .select('subs')
+        .eq('id', props.userId)
+        .single();
+
+    if (subscribed.value === true) {
+        const { data, error } = await supabase
+            .from('profiles')
+            .update(
+                {
+                    channels: usersSub.channels.filter(item => item !== props.userId)
+                }
+            )
+            .eq('id', user.value.id)
+        subscribed.value = false;
+    }
+    else {
+        const { data, error } = await supabase
+            .from('profiles')
+            .update(
+                {
+                    channels: [...usersSub.channels, props.userId]
+                }
+            )
+            .eq('id', user.value.id);
+        const { data: newChannelsData, error: channelsError } = await supabase
+            .from('channels')
+            .update({ subs: [...channelsData.subs, user.value.id] })
+            .eq('id', props.userId)
+            .single();
+
+        subscribed.value = true;
+    }
+
+}
 </script>
 
 <template>
     <ModalsPicture v-if="checkUrl" :picUrl="Url" @closePic="checkUrl = false"></ModalsPicture>
     <ModalsUser v-if="checkUser" :userId="userID" @closeUser="checkUser = false"></ModalsUser>
     <ModalsAttachs v-if="checkAttachs" :attachsArr="allMessages" @closeAttachs="checkAttachs = false"></ModalsAttachs>
+    <ModalsViewChannel v-if="checkViewChannel" :channelId="channelId" @closeChannel ="checkViewChannel = false"></ModalsViewChannel>
 
-    <div id="dialog">
-
+    <div v-if="props.isChannel === false" id="dialog">
         <div id="dialog-header" :style="{ backdropFilter: blur ? 'blur(5px)' : 'none' }">
             <div id="dialog-header-back" @click="emit('close');" style="font-size: 25px; cursor: pointer;"></div>
             <!-- <div id="dialog-header-avatarBorder"> -->
@@ -319,8 +452,10 @@ const blur = ref(await localForage.getItem('blur'));
             <!-- </div> -->
 
             <div id="dialog-header-info">
-                <span id="dialog-header-info-name" @click="checkUser = true, userID = userData.id">{{ userData?.username
-                    }} {{ userData?.official ? '✔️' : '' }}</span>
+                <div id="dialog-header-info-name" @click="checkUser = true, userID = userData.id">{{ userData?.username
+                    }}
+                    <div v-if="userData?.official" id="dialog-header-info-name-verifed"></div>
+                </div>
                 <span id="dialog-header-info-status">{{ onlineStatus }}</span>
             </div>
 
@@ -331,6 +466,8 @@ const blur = ref(await localForage.getItem('blur'));
                 </div>
             </div>
         </div>
+
+
         <!-- <Loading/> -->
         <div id="dialog-body">
             <div id="dialog-body-add" v-if="checkChat">
@@ -348,26 +485,25 @@ const blur = ref(await localForage.getItem('blur'));
                         @mouseover="msg.showEdit = true" @mouseleave="msg.showEdit = false"
                         :style="{ 'background-color': msg.sender_id === user.id ? 'var(--blue)' : 'var(--gray)', 'align-self': msg.sender_id === user.id ? 'flex-end' : 'flex-start' }">
                         <div class="dialog-body-messages-info">
-                            <!-- <div class="dialog-body-messages-info-avatar" :style="{ backgroundImage: `url(${user.user_metadata.avatar_url})` }"></div> -->
                             <span class="dialog-body-messages-info-name"
                                 @click="checkUser = true, userID = msg.sender_id">{{ msg.receiver_id === user.id ?
-        userChat : user.user_metadata.username }}</span>
+                                userChat : user.user_metadata.username }}</span>
                             <span class="dialog-body-messages-info-date"
                                 :title="moment(msg.timestamp).format('DD.MM.YYYY HH:mm')">{{
-        moment(msg.timestamp).format('HH:mm') }}</span>
+                                moment(msg.timestamp).format('HH:mm') }}</span>
                             <span class="dialog-body-messages-info-status"
                                 v-show="msg.receiver_id != user.id && msg.read_status === true"></span>
                             <span class="dialog-body-messages-info-edit"
-                                v-show="msg.receiver_id != user.id && msg.showEdit"
-                                >🖋️</span>
+                                v-show="msg.receiver_id != user.id && msg.showEdit">🖋️</span>
 
                         </div>
 
                         <div class="dialog-body-messages-message">
                             <span class="dialog-body-messages-info-message-text">{{ msg.text }}</span>
 
-                            <img class="dialog-body-messages-info-message-img" v-for="pat in msg.attachs" :src="pat.signedUrl" @click="Url = pat.signedUrl, checkUrl = true">
-                            
+                            <img class="dialog-body-messages-info-message-img" v-for="pat in msg.attachs"
+                                :src="pat.signedUrl" @click="Url = pat.signedUrl, checkUrl = true">
+
                             <img class="dialog-body-messages-info-message-img"
                                 v-if="msg.text.match(/\.(jpeg|jpg|gif|png|webp)$/) != null"
                                 @click="Url = getPinnedImgUrl($event), checkUrl = true" @error="imageError"
@@ -378,7 +514,7 @@ const blur = ref(await localForage.getItem('blur'));
             </div>
         </div>
 
-        <div id="dialog-body-chat" :style="{ backdropFilter: blur ? 'blur(5px)' : 'none'}">
+        <div class="dialog-body-chat" :style="{ backdropFilter: blur ? 'blur(5px)' : 'none'}">
             <button @click="checkAttachsFunc()">вложения</button>
             <div>
                 <input id="fileInput" type="file" accept="image/*" multiple>
@@ -389,9 +525,109 @@ const blur = ref(await localForage.getItem('blur'));
             <div id="dialog-body-chat-send" @click="sendMessage"></div>
         </div>
     </div>
+
+    <!-- CHANNEL DIALOG -->
+    <div v-else id="dialog">
+        <div id="dialog-header" :style="{ backdropFilter: blur ? 'blur(5px)' : 'none' }">
+            <div id="dialog-header-back" @click="emit('close');" style="font-size: 25px; cursor: pointer;"></div>
+            <!-- <div id="dialog-header-avatarBorder"> -->
+            <div id="dialog-header-avatarBorder" :style="{ backgroundImage: `url(${channel?.avatar_url})` }"
+                @click="Url = channel?.avatar_url, checkUrl = true"></div>
+            <!-- </div> -->
+
+            <div id="dialog-header-info">
+                <div id="dialog-header-info-name" @click="channelId = channel?.id; checkViewChannel = true">{{
+                    channel?.name_channel }}
+                    <div v-if="channel?.official" id="dialog-header-info-name-verifed"></div>
+                </div>
+                <span id="dialog-header-info-status">{{channel?.subs.length === 1 ? channel?.subs.length + ' подписчик' : ''  || channel?.subs.length < 5 ? channel?.subs.length + ' подписчика' : channel?.subs.length + ' подписчиков'}}</span>
+            </div>
+
+            <div id="dialog-header-menu">
+                <div id="dialog-header-menu-search-button" @click="searchOpened = !searchOpened"></div>
+                <div id="dialog-header-menu-search" v-if="searchOpened">
+                    <input type="text" id="dialog-header-menu-search-input" v-model="searchTerm" placeholder="Поиск">
+                </div>
+            </div>
+        </div>
+
+
+        <!-- <Loading/> -->
+        <div id="dialog-body">
+
+            <div id="dialog-body-messages">
+                <TransitionGroup name="list" tag="div">
+                    <div class="dialog-body-messages-sender" v-for="msg in allChannelMessages" :key="msg.id"
+                        :style="{ 'background-color':'var(--blue)', 'align-self': 'flex-start' }">
+                        <div class="dialog-body-messages-info">
+                            <!-- <div class="dialog-body-messages-info-avatar" :style="{ backgroundImage: `url(${user.user_metadata.avatar_url})` }"></div> -->
+                            <span class="dialog-body-messages-info-name"
+                                @click="channelId = channel?.id; checkViewChannel = true">{{ channel?.name_channel}}</span>
+                            <span class="dialog-body-messages-info-date"
+                                :title="moment(msg.timestamp).format('DD.MM.YYYY HH:mm')">{{
+                                moment(msg.timestamp).format('HH:mm') }}</span>
+
+                        </div>
+
+                        <div class="dialog-body-messages-message">
+                            <span class="dialog-body-messages-info-message-text">{{ msg.text }}</span>
+
+                            <!-- <img class="dialog-body-messages-info-message-img" v-for="pat in msg.attachs" :src="pat.signedUrl" @click="Url = pat.signedUrl, checkUrl = true">
+                            
+                            <img class="dialog-body-messages-info-message-img"
+                                v-if="msg.text.match(/\.(jpeg|jpg|gif|png|webp)$/) != null"
+                                @click="Url = getPinnedImgUrl($event), checkUrl = true" @error="imageError"
+                                :src="pat.exec(msg.text)[0]"> -->
+                        </div>
+                    </div>
+                </TransitionGroup>
+            </div>
+        </div>
+
+        <div v-if="haveAccessToWrite == true" class="dialog-body-chat" :style="{ backdropFilter: blur ? 'blur(5px)' : 'none'}">
+            <button @click="checkAttachsFunc()">вложения</button>
+            <div>
+                <input id="fileInput" type="file" accept="image/*" multiple>
+                <label for="fileInput" id="dialog-body-chat-attach"></label>
+            </div>
+
+            <input type="text" placeholder="Введите текст" v-model="message" @keyup.enter="sendChannelMessage">
+            <div id="dialog-body-chat-send" @click="sendChannelMessage"></div>
+        </div>
+
+        <div v-else @click="subOnChannel" class="dialog-body-chat channel"
+            :style="{ backdropFilter: blur ? 'blur(5px)' : 'none' }">
+
+            <div id="dialog-body-chat-subscribe">
+                <span v-text="subscribed ? 'Отписаться' : 'Подписаться'"></span>
+            </div>
+        </div>
+    </div>
 </template>
 
 <style lang="scss">
+#dialog-body-chat-subscribe {
+    width: 100%;
+    padding: 15px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    border-radius: 25px;
+    cursor: pointer;
+    span {
+        font-size: 20px;
+        font-weight: 400;
+        color: #FFFFFF;
+        text-transform: uppercase;
+    }
+}
+.channel {
+    transition: .2s ease-in-out;
+    &:hover {
+        background-color: rgba(0, 0, 0, 0.8) !important;
+        transition: .2s ease-in-out;
+    }
+}
 .list-enter-active,
 .list-leave-active {
     transition: all .3s ease-in-out;
@@ -486,6 +722,24 @@ const blur = ref(await localForage.getItem('blur'));
                 font-size: 20px;
                 font-weight: 500;
                 cursor: pointer;
+                display: flex;
+                flex-direction: row;
+                align-items: flex-end;
+                @media screen and (max-width: 450px) {
+                    max-width: 85%;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                    text-wrap: nowrap;
+                }
+                #dialog-header-info-name-verifed {
+                    padding: 10px;
+                    background-image: url('/verifed.svg');
+                    background-size: 100%;
+                    background-repeat: no-repeat;
+                    background-position: center;
+                    width: 10px;
+                    margin-left: 5px;
+                }
             }
 
             #dialog-header-info-status {
@@ -523,12 +777,13 @@ const blur = ref(await localForage.getItem('blur'));
             }
 
             #dialog-header-menu-search-button {
-                padding: 17px;
                 margin: 0 15px;
-                background: url('/search.svg');
+                background: url(/search.svg);
                 background-size: cover;
                 background-position: center;
                 cursor: pointer;
+                width: 40px;
+                height: 40px;
             }
         }
     }
@@ -561,10 +816,9 @@ const blur = ref(await localForage.getItem('blur'));
             width: 100%;
             margin-top: 10px;
             // margin-bottom: 10px;
-
             display: flex;
             flex-direction: column;
-
+        overflow-y: hidden;
             .dialog-body-messages-sender {
                 max-width: 500px;
                 min-width: 200px;
@@ -721,7 +975,7 @@ const blur = ref(await localForage.getItem('blur'));
         }
     }
 
-    #dialog-body-chat {
+    .dialog-body-chat {
         width: 100%;
         height: 70px;
         background-color: rgba(0, 0, 0, .7);

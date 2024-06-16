@@ -75,7 +75,6 @@
             if (files.value[0].size > 2000000) {
                 throw new Error('Файл слишком большой.')
             }
-
             let file = files.value[0];
             cropImage(files.value[0]).then(croppedImage => {
                 file = croppedImage;
@@ -83,30 +82,23 @@
             const fileExt = file.name.split('.').pop()
             const fileName = `${Math.random()}.${fileExt}`
             const filePath = `${fileName}`
-
             newFilePath.value = filePath;
-
             uploading.value = false
             const {data: publicAvatar, error: publicAvatarError} = supabase.storage.from('avatars').getPublicUrl(newFilePath.value)
-
             if (user.value.user_metadata.avatar_url != null) {
                 const getPrevousAvatar = user.value.user_metadata.avatar_url
                 const getFilepath = getPrevousAvatar.split('/').pop();
                 console.log(getFilepath)
-                
                 const { error: removeError } = await supabase.storage.from('avatars').remove([getFilepath])
                 if (removeError) throw removeError
             }
             src.value = publicAvatar.publicUrl
-
             const { error: uploadError } = await supabase.storage.from('avatars').upload(filePath, file)
-
             const { data, error } = await supabase.auth.updateUser({
                 data: {
                     avatar_url: src.value,
                 }
             })
-            // if (uploadError) throw uploadError
         } catch (uploadError) {
             alert(uploadError.message + "abob")
             uploading.value = false
@@ -175,7 +167,7 @@
             if (error) throw error;
         }
         catch (error) {
-            // console.log(error)
+            console.log(error)
         }
     }
 
@@ -214,18 +206,22 @@
             }, 210);
         }
     })
+
+    const checkCreateChannel = ref(false);
 </script>
 <template>
     <div id="menu-header-menu" @click="checkMenu = !checkMenu"></div>
 
     <Teleport to="body">
-        <!-- <ModalsUserEdit v-if="checkUserEdit" @closeUserEdit="checkUserEdit = false; console.log('close')" /> -->
+        <ModalsCreateChannel v-if="checkCreateChannel" @closeCreateChannel="checkCreateChannel = false; console.log('close')" />
+    </Teleport>
+    <Teleport to="body">
         <Transition name="sidemenu">
         <div id="sidemenu" v-if="checkMenu">
-            
             <div id="sidemenu-body" v-if="checkMenu">
                 <div id="sidemenu-body-header">
-                    <div id="sidemenu-body-header-avatar" :style="{ backgroundImage: `url(${user.user_metadata.avatar_url})` }"></div>
+                    <div id="sidemenu-body-header-avatar" 
+                    :style="{ backgroundImage: `url(${user.user_metadata.avatar_url})` }"></div>
                     <div id="sidemenu-body-header-name">
                         {{ user.user_metadata.username }}
                         <span @click="checkUserEdit = !checkUserEdit">Редактировать профиль</span>
@@ -241,17 +237,16 @@
                         <input id="fileInputForBackground" @change="handleFileChange" type="file" accept="image/*">
                         <label for="fileInputForBackground" id="fileInputLabel">Изменить фон</label>
                     </div>
-                    <div @click="localForage.setItem('blur', !blur); blur = !blur; emit('newBlurValue')" :style="{ opacity: blur ? '100%' : '50%' }" class="sidemenu-body-menus-element">
+                    <div @click="localForage.setItem('blur', !blur); blur = !blur; emit('newBlurValue')" 
+                        :style="{ opacity: blur ? '100%' : '50%' }" 
+                        class="sidemenu-body-menus-element">
                         <span v-text="blur ? 'Выключить размытие' : 'Включить размытие'"></span>
                     </div>
-                    <div @click="alert('Пока не работает')" class="sidemenu-body-menus-element dev">
-                        <span>Настройки</span>
+                    <div @click="checkCreateChannel = !checkCreateChannel" class="sidemenu-body-menus-element">
+                        <span>Создать канал</span>
                     </div>
-
                     <div class="sidemenu-body-menus-element"> 
-                        <div class="sidemenu-body-menus-element-exitIcon">
-                            <!-- <span @click="sghnOut">E</span> -->
-                        </div>
+                        <div class="sidemenu-body-menus-element-exitIcon"></div>
                         <div class="sidemenu-body-menus-element-exit">
                             <span @click="sghnOut">Выход</span>
                         </div>
@@ -269,13 +264,24 @@
                         <div id="sidemenu-editUser-main-avatar" @click="" :style="{ backgroundImage: `url(${user.user_metadata.avatar_url})` }"></div>
                     </div>
                     <div id="modal-userEdit">
-                        <input autocomplete="off" @change="changeName()" minlength="3" maxlength="20" id="modal-userEdit-body-dialog-info-nameChange" v-if="nameChange" v-model="name">
-                        <span @click="nameChange = !nameChange" id="modal-userEdit-body-dialog-info-name" v-if="!nameChange">@{{ user?.user_metadata.username }}</span>
+                        <input autocomplete="off" 
+                        @change="changeName()" 
+                        minlength="3" 
+                        maxlength="20" 
+                        id="modal-userEdit-body-dialog-info-nameChange" v-if="nameChange" v-model="name">
+                        <span @click="nameChange = !nameChange" id="modal-userEdit-body-dialog-info-name" v-if="!nameChange">
+                            @{{ user?.user_metadata.username }}
+                        </span>
                     </div>
-
                     <div id="modal-userEdit-description-block">
                         <span id="modal-userEdit-description-title">О себе</span>
-                        <textarea v-model="descinput" @change="changeDesc()" @input="remainEdit = 80 - descinput.length; changeColor()" id="modal-userEdit-description" maxlength="80" rows="1">{{ descinput}}</textarea>
+                        <textarea 
+                            v-model="descinput" 
+                            @change="changeDesc()" 
+                            @input="remainEdit = 80 - descinput.length; changeColor()" 
+                            id="modal-userEdit-description" 
+                            maxlength="80" 
+                            rows="1">{{ descinput}}</textarea>
                         <div id="modal-userEdit-description-length" v-text="remainEdit"></div>
                     </div>
                 </div>
@@ -349,7 +355,7 @@
                 margin-top: 5px;
                 #modal-userEdit-body-dialog-info-nameChange {
                     margin-top: 10px;
-                    width: 50%;
+                    width: 90%;
                     text-align: center;
                     padding: 10px;
                     background-color: var(--background-block);
@@ -363,17 +369,17 @@
                     transition: border .2s ease;
                     @keyframes vlados {
                         0% {
-                            width: 0px;
+                            width: 70%;
                         }
                         100% {
-                            width: 130px;
+                            width: 90%;
                         }
                     }
                 }
                 #modal-userEdit-body-dialog-info-name {
                     font-size: 24px;
                     font-weight: 600;
-                    width: 10px;
+                    width: 90%;
                     border-radius: 10px;
                     margin-top: 5px;
                     padding: 5px;
@@ -387,24 +393,24 @@
                         cursor: pointer;
                         border-radius: 10px;
                         background-color: rgba($color: #fff, $alpha: .1);
-                        width: 130px;
+                        width: 90%;
                         transition: background-color .3s ease;
                         animation: widthIn .3s ease-in-out;
                     }
                     @keyframes widthIn {
                         0% {
-                            width: 0px;
+                            width: 70%;
                         }
                         100% {
-                            width: 130px;
+                            width: 90%;
                         }
                     }
                     @keyframes widthOut {
                         0% {
-                            width: 130px;
+                            width: 90%;
                         }
                         100% {
-                            width: 0px;
+                            width: 70%;
                         }
                     }
                 }

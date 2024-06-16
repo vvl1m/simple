@@ -1,61 +1,51 @@
 <script setup>
     import moment from 'moment';
     const supabase = useSupabaseClient();
-    const user = useSupabaseUser();
     moment.locale('ru');
 
     let props = defineProps({
-        userId: String
+        channelId: String
     })
-    const emit = defineEmits(['closeUser'])
+    const emit = defineEmits(['closeChannel'])
 
     const {data, error} = await supabase
+        .from('channels')
+        .select('*')
+        .eq('id', props.channelId)
+        .single();
+        if (error) {
+            console.log(error);
+        }
+    const {data:getOwner, error:getOwnerError} = await supabase
         .from('profiles')
         .select('*')
-        .eq('id', props.userId)
+        .eq('id', data.owner)
         .single();
-
-
-    const onlineStatus = ref('');
-    if (data.id == '4f723018-4bbd-48f7-b66d-82e651936ccc') {
-        onlineStatus.value = 'служебные уведомления';
-    }
-    else {
-        if (moment(moment()).diff(data.online_at, 'days') > 7) {
-            onlineStatus.value = moment(data.online_at).fromNow() + ' (' + moment(data.online_at).format('DD.MM.YYYY') + ')';
-        }
-        else if (moment(moment()).diff(data.online_at, 'minutes') >= 1) {
-            onlineStatus.value = moment(data.online_at).fromNow();
-        }
-        else {
-            onlineStatus.value = 'онлайн';
-        }
-    }
-
 </script>
 <template>
-    <!-- <ModalsUserEdit @closeUserEdit="emit('closeUser')" v-if="user.id == props.userId" :userId="props.userId"></ModalsUserEdit> -->
+    <!-- <ModalsUserEdit @closeUserEdit="emit('closeChannel')" v-if="channel.id == props.channelId" :channelId="props.channelId"></ModalsUserEdit> -->
     <div id="modal-background">
         <div id="modal">
-            <span>Просмотр профиля</span>
+            <!-- <span>Просмотр канала</span> -->
 
-            <div id="modal-user">
-                <div id="modal-user-body-dialog-info-avatar" :style="{ backgroundImage: `url(${data.avatar_url})` }"></div>
-                <div id="modal-user-body-dialog-info">
+            <div id="modal-channel">
+                <div id="modal-channel-body-dialog-info-avatar" :style="{ backgroundImage: `url(${data.avatar_url})` }"></div>
+                <div id="modal-channel-body-dialog-info">
                     <div class="menu-body-dialog-info-name">
-                        {{ data.username }} 
+                        {{ data.name_channel }} 
                         <div class="menu-body-dialog-info-name-verifed" v-if="data.official"></div>
                     </div>
-                    <!-- <span id="modal-user-body-dialog">{{ data.full_name  }}</span> -->
-                    <span id="modal-user-body-dialog-info-lastSeen"> {{ onlineStatus  }}</span>
+                    <!-- <span id="modal-channel-body-dialog">{{ data.full_name  }}</span> -->
+                    <span id="modal-channel-body-dialog-info-subsCount"> {{ data.subs.length === 1 ? data.subs.length + ' подписчик' : ''  || data.subs.length < 5 ? data.subs.length + ' подписчика' : data.subs.length + ' подписчиков'  }}</span>
                 </div>
             </div>
 
-            <div id="modal-user-description">
-                <span>{{ data.description }}</span>
+            <div id="modal-channel-description">
+                <!-- <span>{{ data.description }}</span> -->
+                <!-- <span>описание (вотрубе)</span> -->
             </div>
         </div>
-        <div id="modal-overlay" @click="emit('closeUser')"></div>
+        <div id="modal-overlay" @click="emit('closeChannel')"></div>
 
     </div>
 </template>
@@ -104,10 +94,10 @@
             background-color: var(--backround);
 
             // display: flex;
-            #modal-user {
+            #modal-channel {
                 display: flex;
                 align-items: center;
-                #modal-user-body-dialog-info-avatar {
+                #modal-channel-body-dialog-info-avatar {
                     width: 100px;
                     height: 100px;
                     background-size: cover;
@@ -115,21 +105,21 @@
                     border-radius: 100%;
                     flex-shrink: 0;
                 }
-                #modal-user-body-dialog-info {
+                #modal-channel-body-dialog-info {
                     display: flex;
                     flex-direction: column;
                     margin-left: 15px;
-                    #modal-user-body-dialog-info-name {
+                    #modal-channel-body-dialog-info-name {
                         font-size: 24px;
                         font-weight: 600;
                     }
-                    #modal-user-body-dialog-info-lastSeen {
+                    #modal-channel-body-dialog-info-subsCount {
                         color: rgba($color: #fff, $alpha: .5);
                         font-size: 14px;
                     }
                 }
             }
-            #modal-user-description {
+            #modal-channel-description {
                 margin-top: 15px;
             }
         }

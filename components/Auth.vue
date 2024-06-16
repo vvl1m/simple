@@ -41,10 +41,28 @@
 
 			if (error) throw error
 		} catch (error) {
-			alert(error.error_description || error.message)
+			if (error.message == 'Invalid login credentials') {
+				alert('Неверный имейл или пароль')
+			}
 		}
 		finally {
 			route.push('/')
+		}
+	}
+
+	const requestPasswordReset = async () => {
+		try {
+			const { error } = await supabase.auth.resetPasswordForEmail(email.value,
+				{
+					redirectTo: 'http://simple.vercel.app/reset-password' 
+				}
+			)
+		}
+		catch (error) {
+			alert(error.error_description || error.message)
+		}
+		finally {
+			alert('Письмо с инструкциями по сбросу пароля было отправлено на ваш почтовый ящик')
 		}
 	}
 </script>
@@ -56,7 +74,7 @@
 			<div id="menuAuth-form-form">
 				<input class="inputField" type="email" placeholder="Имейл" v-model="email" />
 				<input class="inputField" type="password" placeholder="Пароль" name="" v-model="password">
-				<span id="menuAuth-form-form-forgot">Забыли пароль?</span>
+				<span id="menuAuth-form-form-forgot" @click="requestPasswordReset">Забыли пароль?</span>
 				<div class="button">
 					<input
 						type="submit"
@@ -71,9 +89,7 @@
 				<span id="menuAuth-form-signup-button" @click="logCheck = !logCheck">Создать аккаунт</span>
 			</div>
 		</div>
-		<div id="menuAuth-side">
-
-		</div>
+		<div id="menuAuth-side"></div>
 	</div>
 
 	<div id="menuAuth" v-else>
@@ -213,7 +229,7 @@
 				}
 				#menuAuth-form-signup-button {
 					font-size: 18px;
-					font-weight: 700;
+					font-weight: 600;
 					color: white;
 					text-decoration: underline;
 					margin-top: 10px;
@@ -226,8 +242,8 @@
 		#menuAuth-side {
 			margin-right: 10%;
 			background: url('/side.svg');
-			width: 400px;
-			height: 400px;
+			width: 500px;
+			height: 500px;
 			background-size: contain;
 			background-repeat: no-repeat;
 			@media (max-width: 450px) {
