@@ -515,7 +515,7 @@ const subOnChannel = async () => {
         </div>
 
         <div class="dialog-body-chat" :style="{ backdropFilter: blur ? 'blur(5px)' : 'none'}">
-            <button @click="checkAttachsFunc()">вложения</button>
+            <div class="dialog-body-chat-attachs" @click="checkAttachsFunc()"></div>
             <div>
                 <input id="fileInput" type="file" accept="image/*" multiple>
                 <label for="fileInput" id="dialog-body-chat-attach"></label>
@@ -585,7 +585,7 @@ const subOnChannel = async () => {
         </div>
 
         <div v-if="haveAccessToWrite == true" class="dialog-body-chat" :style="{ backdropFilter: blur ? 'blur(5px)' : 'none'}">
-            <button @click="checkAttachsFunc()">вложения</button>
+            <div class="dialog-body-chat-attachs" @click="checkAttachsFunc()"></div>
             <div>
                 <input id="fileInput" type="file" accept="image/*" multiple>
                 <label for="fileInput" id="dialog-body-chat-attach"></label>
@@ -636,7 +636,7 @@ const subOnChannel = async () => {
 .list-enter-from,
 .list-leave-to {
     opacity: 0;
-    transform: translateX(800px);
+    transform: translateX(10%);
 }
 
 :root {
@@ -990,6 +990,19 @@ const subOnChannel = async () => {
         // position: absolute;
         // bottom: 0;
 
+        .dialog-body-chat-attachs {
+            width: 30px;
+            height: 30px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background-image: url('/attachs.svg');
+            background-size: 100%;
+            background-repeat: no-repeat;
+            background-position: center;
+            cursor: pointer;
+        }
         @media screen and (max-width: 450px) {
             padding: 0 10px;
         }

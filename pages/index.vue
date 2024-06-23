@@ -49,7 +49,7 @@
 	.container {
 		display: flex;
 		height: 100vh;
-		width: 100vw;
+		// width: 100vw;
 
 		// backdrop-filter: blur(5px);
 		// background-color: rgba($color: #000000, $alpha: .5);
