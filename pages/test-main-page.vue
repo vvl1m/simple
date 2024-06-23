@@ -1,46 +1,25 @@
 <script setup>
-	// const route = useRoute();
-	// const supabase = useSupabaseClient();
-	// const user = useSupabaseUser();
-	const link = ref('');
-	const linkCheck = ref(false);
+// const items = ref([]);
 
-	const test = (url) => {
-		if (url.match(/\.(jpeg|jpg|gif|png)$/) != null) {
-			console.log('image');
-			linkCheck.value = true
-		}
-		else {
-			console.log('not image');
-			linkCheck.value = false
-		}
-	}
-
-    import VueDraggableResizable from 'vue-draggable-resizable'
-
+// fetch('https://cors-anywhere.herokuapp.com/https://www.anekdot.ru/rss/export_j.xml')
+//   .then(response => response.text())
+//   .then(str => new window.DOMParser().parseFromString(str, "text/xml"))
+//   .then(data => {
+//     const GetItem = data.querySelector("item");
+// 	items.value.push(GetItem.querySelector("description").textContent.replace(/<[^>]*>/g, ""));
+//   })
+//   .catch(err => console.log('Ошибка:', err))
+//   .finally(() => console.log(items.value));
 </script>
 
 <template>
-	<!-- <div class="container" style="background-color: aliceblue; color: black;"> -->
-		<!-- <input type="text" v-model="link" @change="test(link)"> -->
-		<VueDraggableResizable>
-			<div class="image">
-			<!-- <img src="https://i.ibb.co/MNp9GVR/photo-2024-02-19-14-43-17.jpg"> -->
-			<p>abib</p>
-		</div>
-		</VueDraggableResizable>
 
-	<!-- </div> -->
+<div class="test-main-page">
 
+</div>
 </template>
-<style lang="scss">
-	.container {
-		display: flex;
+<style lang="scss" scoped>
+	.test-main-page {
 		height: 100vh;
-		width: 100vw;
-		input {
-			width: 20%;
-			height: 3%;
-		}
 	}
 </style>

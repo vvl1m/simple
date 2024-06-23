@@ -23,6 +23,7 @@
 
     const isMobile = ref(false);
     const width = ref(450);
+    
     const windowWidth = ref(window.innerWidth);
 
     const useIsMobile = computed(() => windowWidth.value < 450);
@@ -49,11 +50,22 @@
     const returnMenu = () => {
         document.querySelector('#menu').style.right = '0';
     }
+    const isChannel = ref(false);
     const selectUser = (userId) => {
         
         console.log('selectedUserId ', userId);
         selectedUserId.value = userId;
+        isChannel.value = false;
         check.value = true; 
+
+        if (useIsMobile.value) {
+            document.querySelector('#menu').style.right = '100%';
+        }
+    }
+    const selectChannel = (channelId) => {
+        selectedUserId.value = channelId;
+        isChannel.value = true;
+        check.value = true;
 
         if (useIsMobile.value) {
             document.querySelector('#menu').style.right = '100%';
@@ -128,11 +140,20 @@
             .from('profiles')
             .select('*')
         if (error) throw error;
-
+    let {data:channels, error:channelsError} = await supabase
+        .from('channels')
+        .select('*')
+        console.log(channels);
+        
+        const channelsSearched = ref([]);
     const newSearchUser = () => {
         try {
             const filteredUsers = data.filter(user => user.username.startsWith(searchTerm));
             users.value = filteredUsers;
+
+            const filteredChannels = channels.filter(channel => channel.name_channel.startsWith(searchTerm));
+            channelsSearched.value = filteredChannels;
+            console.log(channelsSearched.value);
 
         } catch (error) {
             console.error('Ошибка поиска:', error);
@@ -142,6 +163,7 @@
             document.querySelector('#menu-body').scrollTop = document.querySelector('#menu-body').scrollHeight;
         }
     };
+
 
     watch(user, () => {
         avatar.value = user.value.user_metadata.avatar_url;
@@ -158,21 +180,26 @@
         .channel('newMessages')
         .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, async payload => {
             // loadMessages();
+            if (payload.new.receiver_id === null) {
+                loadChannels();
+                const bebs = document.querySelectorAll('.menu-switch-button');
+                bebs[1].style.backgroundColor = '#f84b4b';
+            }
             if (payload.new.receiver_id === user.value.id || payload.new.sender_id === user.value.id) {
                 checkChats();
             }
             if (payload.new.receiver_id === user.value.id) {
-                    const {data: userSender, error} = await supabase 
-                        .from('profiles')
-                        .select('username, avatar_url')
-                        .eq('id', payload.new.sender_id)
-                        .single();
-                    if (error) throw error
-                    showNotification(userSender.username, {
-                        body: payload.new.text,
-                        icon: userSender.avatar_url,
-                    })
-                }
+                const {data: userSender, error} = await supabase 
+                    .from('profiles')
+                    .select('username, avatar_url')
+                    .eq('id', payload.new.sender_id)
+                    .single();
+                if (error) throw error
+                showNotification(userSender.username, {
+                    body: payload.new.text,
+                    icon: userSender.avatar_url,
+                })
+            }
         })
         .subscribe()
 
@@ -211,12 +238,6 @@
             document.querySelector('#menu-header-title').style.display = 'none';
             document.querySelector('#menu-header-avatar').style.display = 'none';
             document.querySelector('#menu-search').style.display = 'none';
-            document.querySelectorAll('.menu-body-dialog-info').forEach(element => {
-                element.style.display = 'none';
-            });
-            document.querySelectorAll('.menu-body-dialog-time').forEach(element => {
-                element.style.display = 'none';
-            })
             document.querySelector('.menu-body-sep').style.display = 'none';
 
         }
@@ -225,34 +246,63 @@
             document.querySelector('#menu-header-title').style.display = 'flex';
             document.querySelector('#menu-header-avatar').style.display = 'flex';
             document.querySelector('#menu-search').style.display = 'flex';
-            document.querySelectorAll('.menu-body-dialog-info').forEach(element => {
-                element.style.display = 'flex';
-            });
-            document.querySelectorAll('.menu-body-dialog-time').forEach(element => {
-                element.style.display = 'flex';
-            })
             document.querySelector('.menu-body-sep').style.display = 'flex';
         }
     }
     const blur = ref(await localForage.getItem('blur'));
 
+    const switchChannels = ref(false);
+    const channelsUsers = ref([]);
+    const lastChannelMessages = ref([]);
+    const loadChannels = async () => {
+        const {data,error} = await supabase
+            .from('profiles')
+            .select('channels')
+            .eq('id', user.value.id)
+            .single();
+        const {data:getChannels, error:getError} = await supabase
+            .from('channels')
+            .select('*')
+            .in('id', data.channels);
+        channelsUsers.value = getChannels;
+
+        lastChannelMessages.value = [];
+        for (let i = 0; i < channelsUsers.value.length; i++) {
+            const {data: lastMessage, error: lastMessageError} = await supabase
+                .from('messages')
+                .select('*')
+                .eq('sender_id', channelsUsers.value[i].id)
+                .order('timestamp', { ascending: false })
+                .limit(1);
+            if (lastMessage.length > 0) {
+                lastChannelMessages.value.push(lastMessage[0].text);
+            }
+        }
+        channelsUsers.value.forEach((element, index) => {
+            element.lastMessage = lastChannelMessages.value[index];
+        })
+        console.log(channelsUsers.value);
+    }
+    loadChannels();
 </script>
 
 <template>        
     <ModalsPicture v-if="checkUrl" :picUrl="Url" @closePic="checkUrl = false"></ModalsPicture>
 
+    <div id="menu-container">
+
+    
     <VueDraggableResizable v-if="!isMobile"
         class-name-handle="handle"
         class-name="active"
-
         ref="resiz"
         :prevent-deactivation="true" 
         :active="true" 
         :draggable="false" 
         :resizable="isMobile ? false : true"
-        :parent="false" 
+        :parent="true" 
         :w="width" 
-        :h="500" 
+        :h="'100%'"
         :max-width="550"
         :min-width="105"
         :axis="'x'" 
@@ -275,19 +325,37 @@
             <input id="menu-search-input" autocomplete="off" v-model="searchTerm" @input="newSearchUser()" type="text" placeholder="Найдите кого-нибудь">
         </div>
 
+        <div v-if="!switched" id="menu-switch">
+            <div @click="switchChannels = false;" class="menu-switch-button" :class="{ 'selected-channel': switchChannels === false}">Контакты</div>
+            <div @click="switchChannels = true" class="menu-switch-button" :class="{ 'selected-channel': switchChannels === true}">Каналы</div>
+        </div>
+        
+        <div v-else id="menu-switch">
+            <div @click="switchChannels = false" class="switched-switch" :class="{ 'selected-channel-switch': switchChannels === false}"></div>
+            <div @click="switchChannels = true" class="switched-switch" :class="{ 'selected-channel-switch': switchChannels === true}" ></div>
+        </div>
+
         <Loading v-if="loading"></Loading>
         <div id="menu-body" v-else>
-            <div class="menu-body-dialog" v-for="chat in chats" :key="chat.id" @click="selectUser(chat.id)" :class="{ 'selected': selectedUserId === chat.id}">
-                <!-- <ClientOnly> -->
-                    <div class="menu-body-dialog-avatar" :style="{ backgroundImage: `url(${chat.avatar_url || 'error404.gif'})`, border: `${moment(moment()).diff(chat.online_at, 'minutes') <= 5 ? '2px solid #6ed1f0' : ''}`}" :class="{'selected-back': selectedUserId === chat.id && switched}"></div>
-                <!-- </ClientOnly> --> 
-                <div class="menu-body-dialog-info">
-                    <span class="menu-body-dialog-info-name">{{ chat.username }} {{ chat.official ? '✔️' : '' }}</span>
-
-                    <!-- <span class="menu-body-dialog-info-name" :class="{ 'unread': !chat.checkedMsg &&  chat.receiver_id === user.id}">{{ chat.username }}</span> -->
-                    <span class="menu-body-dialog-info-message"><b :style="{ 'color': '#fff'}">{{ chat.receiver_id === user.id ? '' : "Вы: "}} </b>{{ chat.lastMessage }} {{chat.attachsLength ? `(Вложение)` : ' '  }}</span>
+            <div v-if="switchChannels === false" class="menu-body-dialog" v-for="chat in chats" 
+                :key="chat.id" @click="selectUser(chat.id)" 
+                :class="{ 'selected': selectedUserId === chat.id}">
+                    <div class="menu-body-dialog-avatar" :style="{ 
+                        backgroundImage: `url(${chat.avatar_url || 'error404.gif'})`, 
+                        border: `${moment(moment()).diff(chat.online_at, 'minutes') <= 5 ? '2px solid #6ed1f0' : ''}`
+                    }" 
+                    :class="{'selected-back': selectedUserId === chat.id && switched}"></div>
+                <div class="menu-body-dialog-info" v-if="!switched">
+                    <div class="menu-body-dialog-info-name">
+                        {{ chat.username }} 
+                        <div class="menu-body-dialog-info-name-verifed" v-if="chat.official"></div>
+                    </div>
+                    <span class="menu-body-dialog-info-message">
+                        <b :style="{ 'color': '#fff'}">{{ chat.receiver_id === user.id ? '' : "Вы: "}} </b>
+                        {{ chat.lastMessage }} {{chat.attachsLength ? `(Вложение)` : ' '  }}
+                    </span>
                 </div>
-                <div class="menu-body-dialog-time">
+                <div class="menu-body-dialog-time" v-if="!switched">
                     <div class="menu-body-dialog-checked" v-show="chat.checkedMsg === true && chat.receiver_id != user.id"></div>
                     <span class="menu-body-dialog-time-time">
                         {{
@@ -295,21 +363,43 @@
                             moment(chat.lastMessageTimestamp).format('HH:mm') : moment(chat.lastMessageTimestamp).format('dd')   
                         }}
                     </span>
-
                 </div>
             </div>
+
+            <div v-else class="menu-body-dialog" v-for="channel in channelsUsers" :key="channel.id" @click="selectChannel(channel.id)" :class="{ 'selected': selectedUserId === channel.id}">
+                <!-- <div class="menu-body-dialog-avatar" :style="{ backgroundImage: `url(${user.avatar_url})` }"></div> -->
+                <div class="menu-body-dialog-avatar" :style="{ backgroundImage: `url(${channel.avatar_url || 'error404.gif'})`}" :class="{'selected-back': selectedUserId === channel.id && switched}"></div>
+
+                <div class="menu-body-dialog-info" v-if="!switched">
+                    <div class="menu-body-dialog-info-name">{{ channel.name_channel }}
+                        <div class="menu-body-dialog-info-name-verifed" v-if="channel.official"></div>
+                    </div>
+                    <span class="menu-body-dialog-info-message">{{ channel.lastMessage || 'Нет сообщений'}}</span>
+                </div>
+
+            </div>
+            
             <div class="menu-body-sep">
                 <hr>
-                <span>Друзей больше нет</span>
+                <span>Больше ничего нет</span>
             </div>
 
             <!-- for search -->
-
+            <span v-if="users.length > 0 && searchTerm != ''" id="menu-error">Люди</span>
             <div class="menu-body-dialog" v-if="users.length > 0 && searchTerm != ''" v-for="user in users" :key="user.id" @click="selectUser(user.id), searchTerm = ''">
                 <div class="menu-body-dialog-avatar" :style="{ backgroundImage: `url(${user.avatar_url})` }"></div>
                 <div class="menu-body-dialog-info">
                     <span class="menu-body-dialog-info-name">{{ user.username }}</span>
                     <span class="menu-body-dialog-info-message">{{ user.description }}</span>
+                </div>
+            </div>
+
+            <span v-if="channelsSearched.length > 0 && searchTerm != ''" id="menu-error">Каналы</span>
+            <div class="menu-body-dialog" v-if="channelsSearched.length > 0 && searchTerm != ''" v-for="user in channelsSearched" :key="user.id" @click="selectChannel(user.id), searchTerm = ''">
+                <div class="menu-body-dialog-avatar" :style="{ backgroundImage: `url(${user.avatar_url})` }"></div>
+                <div class="menu-body-dialog-info">
+                    <span class="menu-body-dialog-info-name">{{ user.name_channel }}</span>
+                    <span class="menu-body-dialog-info-message">{{user.subs.length === 1 ? user.subs.length + ' подписчик' : ''  || user.subs.length < 5 ? user.subs.length + ' подписчика' : user.subs.length + ' подписчиков'}}</span>
                 </div>
             </div>
 
@@ -331,20 +421,42 @@
         </div>
 
         <div id="menu-search">
-            <input id="menu-search-input" v-model="searchTerm" @input="newSearchUser(), console.log(searchTerm)" type="text" placeholder="Найдите кого-нибудь">
+            <input id="menu-search-input" v-model="searchTerm" @input="newSearchUser(), newSearchChannel(), console.log(searchTerm)" type="text" placeholder="Найдите кого-нибудь">
+        </div>
+
+        <div id="menu-switch">
+            <div @click="switchChannels = false" class="menu-switch-button" :class="{ 'selected-channel': switchChannels === false}">Контакты</div>
+            <div @click="switchChannels = true" class="menu-switch-button" :class="{ 'selected-channel': switchChannels === true}">Каналы</div>
         </div>
 
         <Loading v-if="loading"></Loading>
         <div id="menu-body" v-else>
-            <div class="menu-body-dialog" v-for="chat in chats" :key="chat.id" @click="selectUser(chat.id)" :class="{ 'selected': selectedUserId === chat.id}">
-                <!-- <ClientOnly> -->
-                    <div class="menu-body-dialog-avatar" :style="{ backgroundImage: `url(${chat.avatar_url || 'error404.gif'})` }"></div>
-                <!-- </ClientOnly> -->
+            <div v-if="switchChannels === true" class="menu-body-dialog" 
+                v-for="channel in channelsUsers" 
+                :key="channel.id" @click="selectChannel(channel.id)" 
+                :class="{ 'selected': selectedUserId === channel.id}">
+                <div class="menu-body-dialog-avatar" 
+                    :style="{ backgroundImage: `url(${channel.avatar_url || 'error404.gif'})`}" 
+                    :class="{'selected-back': selectedUserId === channel.id && switched}"></div>
                 <div class="menu-body-dialog-info">
-                    <span class="menu-body-dialog-info-name">{{ chat.username }}</span>
-
-                    <!-- <span class="menu-body-dialog-info-name" :class="{ 'unread': !chat.checkedMsg &&  chat.receiver_id === user.id}">{{ chat.username }}</span> -->
-                    <span class="menu-body-dialog-info-message"><b :style="{ 'color': '#fff'}">{{ chat.receiver_id === user.id ? '' : "Вы: "}} </b>{{ chat.lastMessage }} {{chat.attachsLength ? `(Вложение)` : ' '  }}</span>
+                    <div class="menu-body-dialog-info-name">{{ channel.name_channel }}
+                        <div class="menu-body-dialog-info-name-verifed" v-if="channel.official"></div>
+                    </div>
+                    <span class="menu-body-dialog-info-message">{{ channel.lastMessage || 'loading'}}</span>
+                </div>
+            </div>
+            <div v-else class="menu-body-dialog" v-for="chat in chats" :key="chat.id" @click="selectUser(chat.id)" :class="{ 'selected': selectedUserId === chat.id}">
+                    <div class="menu-body-dialog-avatar" :style="{ backgroundImage: `url(${chat.avatar_url || 'error404.gif'})` }"></div>
+                <div class="menu-body-dialog-info">
+                    <div class="menu-body-dialog-info-name">
+                        {{ chat.username }} 
+                        <div class="menu-body-dialog-info-name-verifed" v-if="chat.official"></div>
+                    </div>
+                    <span class="menu-body-dialog-info-message">
+                        <b :style="{ 'color': '#fff'}">
+                        {{ chat.receiver_id === user.id ? '' : "Вы: "}} 
+                    </b>
+                    {{ chat.lastMessage }} {{chat.attachsLength ? `(Вложение)` : ' '  }}</span>
                 </div>
                 <div class="menu-body-dialog-time">
                     <div class="menu-body-dialog-checked" v-show="chat.checkedMsg === true && chat.receiver_id != user.id"></div>
@@ -354,15 +466,17 @@
                             moment(chat.lastMessageTimestamp).format('HH:mm') : moment(chat.lastMessageTimestamp).format('dd')   
                         }}
                     </span>
-
                 </div>
             </div>
+
+            
             <div class="menu-body-sep">
                 <hr>
-                <span>Друзей больше нет</span>
+                <span>Больше ничего нет</span>
             </div>
 
             <!-- for search -->
+            <span v-if="users.length > 0 && searchTerm != ''" id="menu-error">Люди</span>
             <div class="menu-body-dialog" v-if="users.length > 0 && searchTerm != ''" v-for="user in users" :key="user.id" @click="selectUser(user.id), searchTerm = ''">
                 <div class="menu-body-dialog-avatar" :style="{ backgroundImage: `url(${user.avatar_url})` }"></div>
                 <div class="menu-body-dialog-info">
@@ -370,6 +484,16 @@
                     <span class="menu-body-dialog-info-message">{{ user.description }}</span>
                 </div>
             </div>
+
+            <span v-if="channelsSearched.length > 0 && searchTerm != ''" id="menu-error">Каналы</span>
+            <div class="menu-body-dialog" v-if="channelsSearched.length > 0 && searchTerm != ''" v-for="user in channelsSearched" :key="user.id" @click="selectChannel(user.id), searchTerm = ''">
+                <div class="menu-body-dialog-avatar" :style="{ backgroundImage: `url(${user.avatar_url})` }"></div>
+                <div class="menu-body-dialog-info">
+                    <span class="menu-body-dialog-info-name">{{ user.name_channel }}</span>
+                    <span class="menu-body-dialog-info-message">{{user.subs.length === 1 ? user.subs.length + ' подписчик' : ''  || user.subs.length < 5 ? user.subs.length + ' подписчика' : user.subs.length + ' подписчиков'}}</span>
+                </div>
+            </div>
+
             <span v-if="searchTerm != '' && users.length == 0" id="menu-error">Ничего не найдено</span>
             
         </div>
@@ -378,279 +502,392 @@
     <ClientOnly v-if="check">
         <Dialog
             :userId = "selectedUserId"
+            :isChannel = "isChannel"
             @close="check = false, selectedUserId = '', returnMenu()"
         ></Dialog>
     </ClientOnly>
     <div id="dialog-nothing" v-else-if="!isMobile">Выберите чат</div>
-
+    </div>
 </template>
 <style lang="scss">
-    .handle {
-        width: 5px;
-        height: 100%;
-        background-color: #ffffff;
-        opacity: .5;
-        border-radius: 5px;
-        transition: .2s ease-in-out;
-        &:hover {
-            opacity: 1;
-            transition: .2s ease-in-out;
-        }
-
-    }
-
-    .active {
-        background-color: transparent;
-        transition: .2s ease-in-out;
-    }
-    .unread {
-        &::after {
-            content: '✖️';
-        }
-    }
-    .selected {
-        background-color: rgba(255, 255, 255, 0.2);
-    }
-    .selected-back {
-        border-radius: 25% !important;
-        transition: all .2s ease-in-out;
-    }
-    #dialog-nothing {
-        width: 250px;
-        padding: 5px;
-        border-radius: 25px;
-        background-color: rgba(0, 0, 0, 0.7);
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        margin: auto;
-        user-select: none;
-        font-size: 18px;
-    }
-    #dialog, #dialog-nothing {
-        @media screen and (max-width: 450px) {
-            // display: none;
-            // position: absolute;
-            // z-index: 9;
-        }
-    }
-    #menu {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        height: 100vh;
-        min-width: auto;
-        // background-color: var(--backround);
-
-        background-color: rgba(0, 0, 0, 0.7);
-        backdrop-filter: blur(5px);
-        transition: right 0.4s;
-        right: 0%;
-        @media screen and (max-width: 450px) {
-            width: 100vw;
-            min-width: auto;
-            height: 100vh;
-            position: absolute;
-            // right: 100%;
-
-            z-index: 9; 
-        }
-        #menu-error {
-            font-size: 20px;
-            margin-top: 20px;
-            text-align: center;
-            font-weight: 300;
-            color: rgba(255, 255, 255, .5);
-        }
-        #menu-header {
+        #menu-container {
             display: flex;
-            justify-content: space-between;
-            align-items: center;
             width: 100%;
-            margin-top: 20px;
-            padding: 0 35px;
-            @media screen and (max-width: 450px) {
-                padding: 0 20px;
+            height: 100%;
+            max-height:100% ;
+                
+            .switched-switch {
+                width: 15px;
+                height: 15px;
+                border-radius: 50%;
+                background-color: #ffffff;
+                transition: .2s ease-in-out;
+                cursor: pointer;
+                opacity: .5;
+    
+                &:hover {
+                    transition: .2s ease-in-out;
+                    opacity: 1;
+                }
             }
-            #menu-header-title {
-                font-size: 2em;
-                font-weight: 500;
-                flex-grow: 2;
-                margin-left: 15px;
+    
+            .selected-channel-switch {
+                opacity: 1;
             }
-            #menu-header-avatar {
-                height: 70px;
-                width: 70px;
+    
+            .handle {
+                width: 5px;
+                height: 50px;
+                // max-height: 90%;
+                background-color: #ffffff;
+                opacity: .5;
+                border-radius: 5px;
+                transition: .2s ease-in-out;
+    
+                &:hover {
+                    opacity: 1;
+                    transition: .2s ease-in-out;
+                }
+            }
+    
+            .active {
+                background-color: transparent;
+                transition: .2s ease-in-out;
+            }
+    
+            .unread {
+                &::after {
+                    content: '✖️';
+                }
+            }
+    
+            .selected {
+                background-color: rgba(255, 255, 255, 0.2);
+            }
+    
+            .selected-channel {
+                background-color: var(--background-block) !important;
+                color: white !important;
+            }
+    
+            .selected-back {
+                border-radius: 25% !important;
+                transition: all .2s ease-in-out;
+            }
+    
+            #dialog-nothing {
+                width: 250px;
+                padding: 5px;
+                border-radius: 25px;
+                background-color: rgba(0, 0, 0, 0.7);
                 display: flex;
                 justify-content: center;
                 align-items: center;
-                cursor: pointer;
-                #menu-header-avatarBorder {
-                    width: 75px;
-                    height: 75px;
-                    border-radius: 100%;
-                    background: linear-gradient(90deg, rgba(219,0,255,1) 0%, rgb(214, 155, 211) 100%);
-                    position: absolute;
-                }
-                #menu-header-avatarBorder-avatar {
-                    width: 100%;
-                    height: 100%;
-                    border-radius: 100%;
-                    background-size: cover;
-                    background-position: center;
-                    // z-index: 2;
+                margin: auto;
+                user-select: none;
+                font-size: 18px;
+            }
+    
+            #dialog,
+            #dialog-nothing {
+                @media screen and (max-width: 450px) {
+                    // display: none;
                     // position: absolute;
-                }
-            }        
-        }
-
-        #menu-search {
-            width: 100%;
-            height: 60px;
-            display: flex;
-            align-items: center;
-            padding: 0 30px;
-            margin-top: 20px;
-            @media screen and (max-width: 450px) {
-                padding: 0 20px;
-            }
-            input {
-                width: 100%;
-                height: 40px;
-                border-radius: 10px;
-                border: none;
-                outline: none;
-                padding-left: 10px;
-                font-size: 15px;
-                color: rgba(255, 255, 255, .5); 
-                background-color: var(--background-block);                
-                &::placeholder {
-                    opacity: 1;
-                    transition: .2s;
-                    text-align: center;
-                }
-                &:focus::placeholder {
-                    transition: .2s;
-                    opacity: 0;
+                    // z-index: 9;
                 }
             }
-        }
-
-        #menu-body {
-            // width: 100%;
-            width: 100%;
-            height: 100%;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            margin-top: 20px;
-            overflow: auto;
-            &::-webkit-scrollbar {
-                width: 8px;
-                @media screen and (max-width: 450px) {
-                    width: 10px;
-                }
-            }
-            &::-webkit-scrollbar-thumb {
-                background-color: rgba(0, 0, 0, .6);
-                border-radius: 15px;
-            }
-            @media screen and (max-width: 450px) {
-                width: 100%;
-            }
-            .menu-body-dialog { 
-                display: flex;
-                flex-direction: row;
-                justify-content: space-between;
-                width: 95%;
-                padding: 10px 10px;
-                margin-bottom: 10px;
-                cursor: pointer;
-                transition: background-color 0.2s;
-
-                border-radius: 25px;
-                justify-content: center;
-                @media screen and (max-width: 450px) {
-                    border-radius: 0px;
-                    width: 100%;
-                    padding: 10px 20px;
-
-                }
-                &:hover {
-                    background-color: rgba(255, 255, 255, .1);
-                }
-                .menu-body-dialog-avatar {
-                    width: 70px;
-                    height: 70px;
-                    border-radius: 100%;
-                    flex-shrink: 0;
-                    background: url("https://i.ibb.co/yQ8TcWD/ezgif-4-bd8944caaa.gif");
-                    background-size: cover;
-                    background-position: center;
-                    // border: 1px solid rgba(255, 255, 255, .5);
-                }
-                .menu-body-dialog-info {
-                    // width:60%;
-                    display: flex;
-                    flex-direction: column;
-                    align-items: flex-start;
-                    justify-content: center;
-                    margin-left: 15px;
-                    flex: 1;
-                    text-overflow: ellipsis;
-                    white-space: nowrap;
-                    .menu-body-dialog-info-name {
-                        font-size: 20px;
-                        font-weight: 500;
-                    }
-                    .menu-body-dialog-info-message {
-                        font-size: 16px;
-                        width: 230px;
-                        text-overflow: ellipsis;
-                        color: rgba(255, 255, 255, .5);
-                        overflow: hidden;
-                    }
-                }
-                .menu-body-dialog-time {
-                    font-size: 13px;
-                    color: rgba(255, 255, 255, 0.5);
-                    display: flex;
-                    align-items: flex-start;
-                    flex: 0;
-                    min-width: 30px;
-                    text-align: right;
-                    justify-content: flex-end;
-                    .menu-body-dialog-time-time {
-                        text-wrap: nowrap;
-                    }
-                    .menu-body-dialog-checked {
-                        background-image: url('/checked.svg');
-                        background-size: 100%;
-                        background-repeat: no-repeat;
-                        background-position: center;
-                        width: 10px;
-                        padding: 10px;
-                        margin-right: 5px;
-                    }
-                }
-
-            }
-            .menu-body-sep {
+    
+            #menu {
                 display: flex;
                 flex-direction: column;
                 align-items: center;
-                margin: 15px 0;
-                width: 100%;
-                hr {
-                    width: 90%;
-                    color: red;
-                    margin-bottom: 15px;
+                height: 100vh;
+                min-width: auto;
+                // background-color: var(--backround);
+    
+                background-color: rgba(0, 0, 0, 0.7);
+                backdrop-filter: blur(5px);
+                transition: right 0.4s;
+                right: 0%;
+    
+                @media screen and (max-width: 450px) {
+                    width: 100vw;
+                    min-width: auto;
+                    height: 100vh;
+                    position: absolute;
+                    // right: 100%;
+    
+                    z-index: 9;
                 }
-                span {
+    
+                #menu-error {
+                    font-size: 20px;
+                    margin-top: 20px;
+                    text-align: center;
+                    font-weight: 300;
                     color: rgba(255, 255, 255, .5);
-                    font-size: 15px;
+                }
+    
+                #menu-header {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    width: 100%;
+                    margin-top: 20px;
+                    padding: 0 35px;
+    
+                    @media screen and (max-width: 450px) {
+                        padding: 0 20px;
+                    }
+    
+                    #menu-header-title {
+                        font-size: 2em;
+                        font-weight: 500;
+                        flex-grow: 2;
+                        margin-left: 15px;
+                    }
+    
+                    #menu-header-avatar {
+                        height: 70px;
+                        width: 70px;
+                        display: flex;
+                        justify-content: center;
+                        align-items: center;
+                        cursor: pointer;
+    
+                        #menu-header-avatarBorder {
+                            width: 75px;
+                            height: 75px;
+                            border-radius: 100%;
+                            background: linear-gradient(90deg, rgba(219, 0, 255, 1) 0%, rgb(214, 155, 211) 100%);
+                            position: absolute;
+                        }
+    
+                        #menu-header-avatarBorder-avatar {
+                            width: 100%;
+                            height: 100%;
+                            border-radius: 100%;
+                            background-size: cover;
+                            background-position: center;
+                            // z-index: 2;
+                            // position: absolute;
+                        }
+                    }
+                }
+    
+                #menu-search {
+                    width: 100%;
+                    height: 60px;
+                    display: flex;
+                    align-items: center;
+                    padding: 0 30px;
+                    margin-top: 20px;
+    
+                    @media screen and (max-width: 450px) {
+                        padding: 0 20px;
+                    }
+    
+                    input {
+                        width: 100%;
+                        height: 40px;
+                        border-radius: 10px;
+                        border: none;
+                        outline: none;
+                        padding-left: 10px;
+                        font-size: 15px;
+                        color: rgba(255, 255, 255, .5);
+                        background-color: var(--background-block);
+    
+                        &::placeholder {
+                            opacity: 1;
+                            transition: .2s;
+                            text-align: center;
+                        }
+    
+                        &:focus::placeholder {
+                            transition: .2s;
+                            opacity: 0;
+                        }
+                    }
+                }
+    
+                #menu-switch {
+                    width: 100%;
+                    display: flex;
+                    flex-direction: row;
+                    align-items: center;
+                    justify-content: center;
+                    margin-top: 20px;
+                    gap: 10px;
+    
+                    @media screen and (max-width: 450px) {}
+    
+                    .menu-switch-button {
+                        display: flex;
+                        flex-direction: row;
+                        align-items: center;
+                        justify-content: center;
+                        cursor: pointer;
+                        padding: 5px 10px;
+                        border-radius: 10px;
+                        background-color: var(--background-block-hover);
+                        color: rgba(255, 255, 255, .5);
+                        font-size: 15px;
+                        transition: all 0.2s;
+    
+                        &:hover {
+                            background-color: var(--background-block);
+                            color: white !important;
+                        }
+                    }
+                }
+    
+                #menu-body {
+                    // width: 100%;
+                    width: 100%;
+                    height: 100%;
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;
+                    margin-top: 20px;
+                    overflow: auto;
+    
+                    &::-webkit-scrollbar {
+                        width: 8px;
+    
+                        @media screen and (max-width: 450px) {
+                            width: 10px;
+                        }
+                    }
+    
+                    &::-webkit-scrollbar-thumb {
+                        background-color: rgba(0, 0, 0, .6);
+                        border-radius: 15px;
+                    }
+    
+                    @media screen and (max-width: 450px) {
+                        width: 100%;
+                    }
+    
+                    .menu-body-dialog {
+                        display: flex;
+                        flex-direction: row;
+                        justify-content: space-between;
+                        width: 95%;
+                        padding: 10px 10px;
+                        margin-bottom: 10px;
+                        cursor: pointer;
+                        transition: background-color 0.2s;
+    
+                        border-radius: 25px;
+                        justify-content: center;
+    
+                        @media screen and (max-width: 450px) {
+                            border-radius: 0px;
+                            width: 100%;
+                            padding: 10px 20px;
+    
+                        }
+    
+                        &:hover {
+                            background-color: rgba(255, 255, 255, .1);
+                        }
+    
+                        .menu-body-dialog-avatar {
+                            width: 70px;
+                            height: 70px;
+                            border-radius: 100%;
+                            flex-shrink: 0;
+                            background: url("https://i.ibb.co/yQ8TcWD/ezgif-4-bd8944caaa.gif");
+                            background-size: cover;
+                            background-position: center;
+                            // border: 1px solid rgba(255, 255, 255, .5);
+                        }
+    
+                        .menu-body-dialog-info {
+                            // width:60%;
+                            display: flex;
+                            flex-direction: column;
+                            align-items: flex-start;
+                            justify-content: center;
+                            margin-left: 15px;
+                            flex: 1;
+                            text-overflow: ellipsis;
+                            white-space: nowrap;
+    
+                            .menu-body-dialog-info-name {
+                                font-size: 20px;
+                                font-weight: 500;
+                                display: flex;
+                                align-items: flex-end;
+    
+                                .menu-body-dialog-info-name-verifed {
+                                    padding: 10px;
+                                    background-image: url('/verifed.svg');
+                                    background-size: 100%;
+                                    background-repeat: no-repeat;
+                                    background-position: center;
+                                    width: 10px;
+                                    padding: 10px;
+                                    margin-left: 5px;
+                                }
+                            }
+    
+                            .menu-body-dialog-info-message {
+                                font-size: 16px;
+                                width: 230px;
+                                text-overflow: ellipsis;
+                                color: rgba(255, 255, 255, .5);
+                                overflow: hidden;
+                            }
+                        }
+    
+                        .menu-body-dialog-time {
+                            font-size: 13px;
+                            color: rgba(255, 255, 255, 0.5);
+                            display: flex;
+                            align-items: flex-start;
+                            flex: 0;
+                            min-width: 30px;
+                            text-align: right;
+                            justify-content: flex-end;
+    
+                            .menu-body-dialog-time-time {
+                                text-wrap: nowrap;
+                            }
+    
+                            .menu-body-dialog-checked {
+                                background-image: url('/checked.svg');
+                                background-size: 100%;
+                                background-repeat: no-repeat;
+                                background-position: center;
+                                width: 10px;
+                                padding: 10px;
+                                margin-right: 5px;
+                            }
+                        }
+    
+                    }
+    
+                    .menu-body-sep {
+                        display: flex;
+                        flex-direction: column;
+                        align-items: center;
+                        margin: 15px 0;
+                        width: 100%;
+    
+                        hr {
+                            width: 90%;
+                            color: red;
+                            margin-bottom: 15px;
+                        }
+    
+                        span {
+                            color: rgba(255, 255, 255, .5);
+                            font-size: 15px;
+                        }
+                    }
                 }
             }
         }
-    }
 </style>

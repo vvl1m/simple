@@ -3,7 +3,7 @@
 	const route = useRouter();
 	import localForage from "localforage";
 
-	if (user.value === null) {
+	if (user.value === null && !route.currentRoute.value.path !== '/reset-password') {
 		route.push('/login');	
 	}
 	else {
@@ -49,7 +49,7 @@
 	.container {
 		display: flex;
 		height: 100vh;
-		width: 100vw;
+		// width: 100vw;
 
 		// backdrop-filter: blur(5px);
 		// background-color: rgba($color: #000000, $alpha: .5);

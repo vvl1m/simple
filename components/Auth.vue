@@ -41,10 +41,28 @@
 
 			if (error) throw error
 		} catch (error) {
-			alert(error.error_description || error.message)
+			if (error.message == 'Invalid login credentials') {
+				alert('Неверный имейл или пароль')
+			}
 		}
 		finally {
 			route.push('/')
+		}
+	}
+
+	const requestPasswordReset = async () => {
+		try {
+			const { error } = await supabase.auth.resetPasswordForEmail(email.value,
+				{
+					redirectTo: 'http://simple.vercel.app/reset-password' 
+				}
+			)
+		}
+		catch (error) {
+			alert(error.error_description || error.message)
+		}
+		finally {
+			alert('Письмо с инструкциями по сбросу пароля было отправлено на ваш почтовый ящик')
 		}
 	}
 </script>
@@ -56,7 +74,7 @@
 			<div id="menuAuth-form-form">
 				<input class="inputField" type="email" placeholder="Имейл" v-model="email" />
 				<input class="inputField" type="password" placeholder="Пароль" name="" v-model="password">
-				<span id="menuAuth-form-form-forgot">Забыли пароль?</span>
+				<span id="menuAuth-form-form-forgot" @click="requestPasswordReset">Забыли пароль?</span>
 				<div class="button">
 					<input
 						type="submit"
@@ -71,9 +89,7 @@
 				<span id="menuAuth-form-signup-button" @click="logCheck = !logCheck">Создать аккаунт</span>
 			</div>
 		</div>
-		<div id="menuAuth-side">
-
-		</div>
+		<div id="menuAuth-side"></div>
 	</div>
 
 	<div id="menuAuth" v-else>
@@ -85,154 +101,170 @@
 					<input class="inputField" type="password" placeholder="Пароль" name="" v-model="password">
 					<div class="button">
 						<input
-							type="submit"
-							class="button-submit"
-							@click="handleLogin"
-							value="Продолжить"
+						type="submit"
+						class="button-submit"
+						@click="handleLogin"
+						value="Продолжить"
 						/>
+						<span id="button-personal">Нажимая кнопку "Продолжить", вы даете согласие на обработку персональных данных</span>
 					</div>
 					<span @click="logCheck = !logCheck" class="back-button">Назад</span>
 				</div>
-			</div>
+		</div>
+		<div id="menuAuth-side"></div>
+
 	</div>
 </template>
 
 <style lang="scss">
-	#menuAuth {
+#menuAuth {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	height: 100vh;
+	width: 100vw;
+	backdrop-filter: blur(2px);
+	text-transform: uppercase;
+	@media (max-width: 450px), (max-width: 1280px) {
+		width: 100%;
+	}
+	#menuAuth-form {
+		margin-left: 10%;
 		display: flex;
+		flex-direction: column;
+		height: 90%;
 		justify-content: space-between;
-		align-items: center;
-		height: 100vh;
-		width: 100vw;
-		backdrop-filter: blur(2px);
-		text-transform: uppercase;
-		@media (max-width: 450px) {
-			width: 100%;
+		@media (max-width: 450px), (max-width: 1280px) {
+			align-items: center;
+			width: 80%;
 		}
-		#menuAuth-form {
-			margin-left: 10%;
-			display: flex;
-			flex-direction: column;
-			@media (max-width: 450px) {
-				align-items: center;
-				width: 80%;
-			}
-			#menuAuth-form-logo {
-				background: url('/logo-test.png');
-				width: 300px;
-				height: 300px;
-				background-size: contain;
-				background-repeat: no-repeat;
-			}
-			#menuAuth-form-form {
-				margin-top: 20px;
-				display: flex;
-				flex-direction: column;
-				@media (max-width: 450px) {
-					width: 80%;
-					align-items: center;
-				}
-				.inputField {
-					width: 450px;
-					height: 40px;
-					margin-bottom: 30px;
-					font-size: 24px;
-					background: none;
-					outline: none;
-					border: none;
-					border-bottom: 5px solid white;
-					color: white;
-					@media (max-width: 450px) {
-						width: 100%;
-					}
-					&::placeholder {
-						opacity: 1;
-						transition: .2s;
-						color: #fff;
-						background: none;
-						text-transform: uppercase;
-						font-weight: 400;
-					}
-					&:focus::placeholder {
-						opacity: 0;
-						transform: translateY(5px);
-					}
-				}
-				#menuAuth-form-form-forgot {
-					font-size: 18px;
-					font-weight: 500;
-					color: white;
-					transition: .2s;
-					&:hover {
-						opacity: .5;
-						cursor: pointer;
-					}
-				}
-				.button {
-					.button-submit {
-						margin-top: 30px;
-						background: none;
-						border: none;
-						outline: none;
-						color: white;
-						font-size: 20px;
-						width: 250px;
-						padding: 15px;
-						border-radius: 50px;
-						background-color: #1B1E20;
-						text-transform: uppercase;
-						font-weight: 500;
-						font-size: 24px;
-						&:hover {
-							cursor: pointer;
-							background-color: #0e0f10;
-						}
-					}
-				}
-
-				.back-button {
-					font-size: 18px;
-					font-weight: 700;
-					color: white;
-					text-decoration: underline;
-					margin-top: 10px;
-					&:hover {
-						cursor: pointer;
-					}
-				}
-			}
-			#menuAuth-form-signup {
-				margin-top: 100px;
-				display: flex;
-				flex-direction: column;
-				#menuAuth-form-signup-text {
-					font-size: 18px;
-					font-weight: 500;
-					color: white;
-
-				}
-				#menuAuth-form-signup-button {
-					font-size: 18px;
-					font-weight: 700;
-					color: white;
-					text-decoration: underline;
-					margin-top: 10px;
-					&:hover {
-						cursor: pointer;
-					}
-				}
-			}
-		}
-		#menuAuth-side {
-			margin-right: 10%;
-			background: url('/side.svg');
-			width: 400px;
-			height: 400px;
+		#menuAuth-form-logo {
+			background: url('/logo-test.png');
+			width: 300px;
+			height: 300px;
 			background-size: contain;
 			background-repeat: no-repeat;
-			@media (max-width: 450px) {
-				display: none;
+		}
+		#menuAuth-form-form {
+			// margin-top: 20px;
+			display: flex;
+			flex-direction: column;
+			flex: 1;
+			justify-content: space-evenly;
+			@media (max-width: 450px), (max-width: 1280px) {
+				width: 80%;
+				align-items: center;
+			}
+			.inputField {
+				width: 450px;
+				height: 40px;
+				// margin-bottom: 30px;
+				font-size: 24px;
+				background: none;
+				outline: none;
+				border: none;
+				border-bottom: 5px solid white;
+				color: white;
+				@media (max-width: 450px) {
+					width: 100%;
+				}
+				&::placeholder {
+					opacity: 1;
+					transition: .2s;
+					color: #fff;
+					background: none;
+					text-transform: uppercase;
+					font-weight: 400;
+				}
+				&:focus::placeholder {
+					opacity: 0;
+					transform: translateY(5px);
+				}
+			}
+			#menuAuth-form-form-forgot {
+				font-size: 18px;
+				font-weight: 500;
+				color: white;
+				transition: .2s;
+				&:hover {
+					opacity: .5;
+					cursor: pointer;
+				}
+			}
+			.button {
+				display: flex;
+				flex-direction: column;
+				align-items: center;
+				justify-content: center;
+				width: 50%;
+				.button-submit {
+					// margin-top: 30px;
+					background: none;
+					border: none;
+					outline: none;
+					color: white;
+					font-size: 20px;
+					width: 250px;
+					padding: 15px;
+					border-radius: 50px;
+					background-color: #1B1E20;
+					text-transform: uppercase;
+					font-weight: 500;
+					font-size: 24px;
+					&:hover {
+						cursor: pointer;
+						background-color: #0e0f10;
+					}
+				}
+				#button-personal {
+					font-size: 12px;
+					font-weight: 400;
+					color: white;
+					opacity: .5;
+					margin-top: 10px;
+					text-align: center;
+				}
+			}
+			.back-button {
+				font-size: 18px;
+				font-weight: 700;
+				color: white;
+				text-decoration: underline;
+				&:hover {
+					cursor: pointer;
+				}
+			}
+		}
+		#menuAuth-form-signup {
+			display: flex;
+			flex-direction: column;
+			#menuAuth-form-signup-text {
+				font-size: 18px;
+				font-weight: 500;
+				color: white;
+			}
+			#menuAuth-form-signup-button {
+				font-size: 18px;
+				font-weight: 600;
+				color: white;
+				text-decoration: underline;
+				margin-top: 10px;
+				&:hover {
+					cursor: pointer;
+				}
 			}
 		}
 	}
+	#menuAuth-side {
+		margin-right: 10%;
+		background: url('/side.svg');
+		width: 500px;
+		height: 500px;
+		background-size: contain;
+		background-repeat: no-repeat;
+		@media (max-width: 450px), (max-width: 1280px) {
+			display: none;
+		}
+	}
+}
 </style>
