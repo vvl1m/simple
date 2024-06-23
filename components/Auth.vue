@@ -54,7 +54,7 @@
 		try {
 			const { error } = await supabase.auth.resetPasswordForEmail(email.value,
 				{
-					redirectTo: 'http://simple.vercel.app/reset-password' 
+					redirectTo: 'https://simple-opal.vercel.app/reset-password' 
 				}
 			)
 		}
