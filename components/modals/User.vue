@@ -37,8 +37,6 @@
     <!-- <ModalsUserEdit @closeUserEdit="emit('closeUser')" v-if="user.id == props.userId" :userId="props.userId"></ModalsUserEdit> -->
     <div id="modal-background">
         <div id="modal">
-            <span>Просмотр профиля</span>
-
             <div id="modal-user">
                 <div id="modal-user-body-dialog-info-avatar" :style="{ backgroundImage: `url(${data.avatar_url})` }"></div>
                 <div id="modal-user-body-dialog-info">
