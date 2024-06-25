@@ -35,6 +35,9 @@ const createChannel = async () => {
         .from('profiles')
         .update({ channels: [...userChannels, data.id] })
         .eq('id', user.value.id)
+
+    alert('Канал создан');
+    emit('closeCreateChannel');
 }
 watch (nameChannel, () => {
     if (nameChannel.value == '') {

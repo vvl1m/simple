@@ -293,6 +293,7 @@ const subscribed = ref(false);
 const haveAccessToWrite = ref(false);
 
 async function loadChannelData(channelId) {
+    subscribed.value = false;
     try {
         const { data:usersSub, error:usersSubError } = await supabase
         .from('profiles')
@@ -381,7 +382,6 @@ async function waitRead() {
 }
 waitRead();
 //#endregion
-
 const imageError = (e) => {
     e.target.src = 'https://i.ibb.co/zhhMCT1/ezgif-4-bd8944caaa.gif';
 }
@@ -410,10 +410,14 @@ const subOnChannel = async () => {
             .from('profiles')
             .update(
                 {
-                    channels: usersSub.channels.filter(item => item !== props.userId)
+                    channels: usersSub.channels.filter((item) => item !== props.userId)
                 }
             )
-            .eq('id', user.value.id)
+            .eq('id', user.value.id);
+        const { data: newChannelsData, error: channelsError } = await supabase
+            .from('channels')
+            .update({ subs: channelsData.subs.filter((item) => item !== user.value.id) })
+            .eq('id', props.userId);
         subscribed.value = false;
     }
     else {

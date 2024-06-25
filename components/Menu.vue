@@ -220,6 +220,16 @@
     }
     waitRead();
 
+    async function waitSub() {
+        const { data, error } = supabase
+            .channel('waitForSubMenu')
+            .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'profiles' }, payload => {
+                console.log(payload);
+            })
+        if (error) throw error
+    }
+    waitSub();
+
     import VueDraggableResizable from 'vue-draggable-resizable'
 
     const resiz = ref(null);

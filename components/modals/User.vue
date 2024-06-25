@@ -104,6 +104,9 @@
             background-color: var(--backround);
 
             // display: flex;
+            @media screen and (max-width: 450px) {
+                width: 90% !important;
+            }
             #modal-user {
                 display: flex;
                 align-items: center;
