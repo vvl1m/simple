@@ -326,9 +326,6 @@ async function loadChannelData(channelId) {
         .eq('sender_id', channelId)
         .order('timestamp', { ascending: true });
     allChannelMessages.value = channelMessages;
-
-    console.log(allChannelMessages.value);
-
     }
     catch (error) {
         console.error('Ошибка загрузки данных: ', error);
@@ -439,6 +436,42 @@ const subOnChannel = async () => {
     }
 
 }
+const editMessageOn = ref(false);
+const openEditMessage = async (msgID,textMessage) => {
+    editMessageOn.value = true;
+    message.value = textMessage;
+
+    await nextTick();
+    const buttonAccept = document.querySelector('#dialog-body-chat-confirmEdit');
+    console.log(buttonAccept);
+
+    if (buttonAccept) {
+        buttonAccept.addEventListener('click', () => {
+            if (message.value === '') {
+                editMessageOn.value = false;
+                message.value = '';
+                return alert('Сообщение не может быть пустым');
+            }
+            if (message.value === textMessage) {
+                editMessageOn.value = false;
+                message.value = '';
+                return;
+            }
+            confirmEditMessage(msgID);
+        })
+    }
+
+}
+const confirmEditMessage = async (msgID) => {
+    const { data, error } = await supabase
+        .from('messages')
+        .update({ text: message.value })
+        .eq('id', msgID);
+    editMessageOn.value = false;
+    message.value = '';
+
+    loadMessages();
+}
 </script>
 
 <template>
@@ -498,13 +531,16 @@ const subOnChannel = async () => {
                             <span class="dialog-body-messages-info-status"
                                 v-show="msg.receiver_id != user.id && msg.read_status === true"></span>
                             <span class="dialog-body-messages-info-edit"
-                                v-show="msg.receiver_id != user.id && msg.showEdit">🖋️</span>
+                                v-show="msg.receiver_id != user.id && msg.showEdit"
+                                @click="openEditMessage(msg.id, msg.text)"
+                                v-if="!editMessageOn"
+                                >🖋️</span>
 
                         </div>
 
                         <div class="dialog-body-messages-message">
                             <span class="dialog-body-messages-info-message-text">{{ msg.text }}</span>
-
+                            
                             <img class="dialog-body-messages-info-message-img" v-for="pat in msg.attachs"
                                 :src="pat.signedUrl" @click="Url = pat.signedUrl, checkUrl = true">
 
@@ -526,7 +562,9 @@ const subOnChannel = async () => {
             </div>
 
             <input type="text" placeholder="Введите текст" v-model="message" @keyup.enter="sendMessage">
-            <div id="dialog-body-chat-send" @click="sendMessage"></div>
+
+            <div v-if="!editMessageOn" id="dialog-body-chat-send" @click="sendMessage"></div>
+            <div v-else id="dialog-body-chat-confirmEdit"></div>
         </div>
     </div>
 
@@ -1046,6 +1084,18 @@ const subOnChannel = async () => {
             border: none;
             outline: none;
             background: url('/Vector.png');
+            background-size: 75%;
+            background-position: center;
+            background-repeat: no-repeat;
+            cursor: pointer;
+        }
+
+        #dialog-body-chat-confirmEdit {
+            padding: 18px;
+            border-radius: 100%;
+            border: none;
+            outline: none;
+            background: url('/edit.svg');
             background-size: 75%;
             background-position: center;
             background-repeat: no-repeat;

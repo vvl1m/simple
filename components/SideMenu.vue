@@ -309,7 +309,7 @@
     }
 
     #sidemenu-overlay {
-            width: calc(100% - 400px);
+            width: calc(100% - 450px);
             height: 100%;
             position: absolute;
             top: 0;
@@ -318,7 +318,7 @@
             // background-color: rgba($color: #000000, $alpha: .65);
 
             @media screen and (max-width: 450px) {
-                width: calc(100% - 90%);
+                display: none;
             }
         }
     #menu-header-menu {
@@ -485,14 +485,14 @@
 
         }
         #sidemenu-body {
-            width: 400px;
+            width: 450px;
             height: 100vh;
             background-color: var(--background-block);
             display: flex;
             flex-direction: column;
             align-items: center;
             @media screen and (max-width: 450px) {
-                width: 90%;
+                width: 100%;
             }
             #sidemenu-body-header {
                 display: flex;

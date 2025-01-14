@@ -50,10 +50,13 @@
     const returnMenu = () => {
         document.querySelector('#menu').style.right = '0';
     }
+
+    const pinnedChats = ref([]);
+    localForage.getItem('pinnedChats').then((value) => {
+        pinnedChats.value = JSON.parse(value);
+    })
     const isChannel = ref(false);
     const selectUser = (userId) => {
-        
-        console.log('selectedUserId ', userId);
         selectedUserId.value = userId;
         isChannel.value = false;
         check.value = true; 
@@ -84,10 +87,13 @@
 
             if (messagesError) {
                 throw messagesError;
-            }
+            }   
 
+            localForage.getItem('pinnedChats').then((value) => {
+                pinnedChats.value = JSON.parse(value);
+            })
+            const uniqueChatsSet = new Set(pinnedChats.value);
             // Фильтрация уникальных диалогов
-            const uniqueChatsSet = new Set();
             messagesData.forEach(chat => {
                 uniqueChatsSet.add(chat.sender_id);
                 uniqueChatsSet.add(chat.receiver_id);
@@ -105,7 +111,7 @@
                 if (profileError) {
                     throw profileError;
                 }
-
+                
                 // Нахождение последнего сообщения для данного чата
                 const lastMessage = messagesData
                     .filter(msg => msg.sender_id === chatId || msg.receiver_id === chatId)
@@ -118,12 +124,13 @@
                     checkedMsg: lastMessage.read_status,
                     receiver_id: lastMessage.receiver_id,
                 };
-
             }));
+
+            // chatDetails = chatDetails.filter(chat => pinnedChats.value.includes(chat.id));
+            // chatDetails = chatDetails.filter(chat => !pinnedChats.value.includes(chat.id));
 
             // Обновление реактивной переменной chats
             chats.value = chatDetails;
-            console.log(chats.value);
             loading.value = false;
 
         } catch (error) {
@@ -143,8 +150,7 @@
     let {data:channels, error:channelsError} = await supabase
         .from('channels')
         .select('*')
-        console.log(channels);
-        
+
         const channelsSearched = ref([]);
     const newSearchUser = () => {
         try {
@@ -291,16 +297,24 @@
         channelsUsers.value.forEach((element, index) => {
             element.lastMessage = lastChannelMessages.value[index];
         })
-        console.log(channelsUsers.value);
     }
     loadChannels();
+
+    import ContextMenu from './ContextMenu.vue';
+    const contextMenuRef = ref(null);
+
+    const showContextMenu = (event) => {
+        event.preventDefault();
+        contextMenuRef.value.showContextMenu(event);
+    };
+
+    
 </script>
 
 <template>        
     <ModalsPicture v-if="checkUrl" :picUrl="Url" @closePic="checkUrl = false"></ModalsPicture>
-
+    <ContextMenu ref="contextMenuRef" :userId="selectedUserId" @closeContextMenu="checkChats"></ContextMenu>
     <div id="menu-container">
-
     
     <VueDraggableResizable v-if="!isMobile"
         class-name-handle="handle"
@@ -348,8 +362,9 @@
         <Loading v-if="loading"></Loading>
         <div id="menu-body" v-else>
             <div v-if="switchChannels === false" class="menu-body-dialog" v-for="chat in chats" 
+                @contextmenu.prevent="(event) => { showContextMenu(event); selectUser(chat.id); }"
                 :key="chat.id" @click="selectUser(chat.id)" 
-                :class="{ 'selected': selectedUserId === chat.id}">
+                :class="{ 'selected': selectedUserId === chat.id }">
                     <div class="menu-body-dialog-avatar" :style="{ 
                         backgroundImage: `url(${chat.avatar_url || 'error404.gif'})`, 
                         border: `${moment(moment()).diff(chat.online_at, 'minutes') <= 5 ? '2px solid #6ed1f0' : ''}`
@@ -365,6 +380,7 @@
                         {{ chat.lastMessage }} {{chat.attachsLength ? `(Вложение)` : ' '  }}
                     </span>
                 </div>
+
                 <div class="menu-body-dialog-time" v-if="!switched">
                     <div class="menu-body-dialog-checked" v-show="chat.checkedMsg === true && chat.receiver_id != user.id"></div>
                     <span class="menu-body-dialog-time-time">
@@ -374,6 +390,8 @@
                         }}
                     </span>
                 </div>
+                <div class="menu-body-dialog-pinned" v-if="pinnedChats.includes(chat.id)"></div>
+
             </div>
 
             <div v-else class="menu-body-dialog" v-for="channel in channelsUsers" :key="channel.id" @click="selectChannel(channel.id)" :class="{ 'selected': selectedUserId === channel.id}">
@@ -477,6 +495,7 @@
                         }}
                     </span>
                 </div>
+                <div class="menu-body-dialog-pinned" v-if="pinnedChats.includes(chat.id)"></div>
             </div>
 
             
@@ -520,384 +539,393 @@
     </div>
 </template>
 <style lang="scss">
-        #menu-container {
-            display: flex;
-            width: 100%;
-            height: 100%;
-            max-height:100% ;
-                
-            .switched-switch {
-                width: 15px;
-                height: 15px;
-                border-radius: 50%;
-                background-color: #ffffff;
+    #menu-container {
+        display: flex;
+        width: 100%;
+        height: 100%;
+        max-height:100% ;
+            
+        .switched-switch {
+            width: 15px;
+            height: 15px;
+            border-radius: 50%;
+            background-color: #ffffff;
+            transition: .2s ease-in-out;
+            cursor: pointer;
+            opacity: .5;
+    
+            &:hover {
                 transition: .2s ease-in-out;
-                cursor: pointer;
-                opacity: .5;
-    
-                &:hover {
-                    transition: .2s ease-in-out;
-                    opacity: 1;
-                }
-            }
-    
-            .selected-channel-switch {
                 opacity: 1;
             }
+        }
+        .selected-channel-switch {
+            opacity: 1;
+        }
     
-            .handle {
-                width: 5px;
-                height: 50px;
-                // max-height: 90%;
-                background-color: #ffffff;
-                opacity: .5;
-                border-radius: 5px;
-                transition: .2s ease-in-out;
+        .handle {
+            width: 5px;
+            height: 50px;
+            // max-height: 90%;
+            background-color: #ffffff;
+            opacity: .5;
+            border-radius: 5px;
+            transition: .2s ease-in-out;
     
-                &:hover {
-                    opacity: 1;
-                    transition: .2s ease-in-out;
-                }
-            }
-    
-            .active {
-                background-color: transparent;
+            &:hover {
+                opacity: 1;
                 transition: .2s ease-in-out;
             }
+        }
     
-            .unread {
-                &::after {
-                    content: '✖️';
-                }
+        .active {
+            background-color: transparent;
+            transition: .2s ease-in-out;
+        }
+    
+        .unread {
+            &::after {
+                content: '✖️';
             }
+        }
     
-            .selected {
-                background-color: rgba(255, 255, 255, 0.2);
+        .selected {
+            background-color: rgba(255, 255, 255, 0.2);
+        }
+    
+        .selected-channel {
+            background-color: var(--background-block) !important;
+            color: white !important;
+        }
+    
+        .selected-back {
+            border-radius: 25% !important;
+            transition: all .2s ease-in-out;
+        }
+    
+        #dialog-nothing {
+            width: 250px;
+            padding: 5px;
+            border-radius: 25px;
+            background-color: rgba(0, 0, 0, 0.7);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin: auto;
+            user-select: none;
+            font-size: 18px;
+        }
+    
+        #dialog,
+        #dialog-nothing {
+            @media screen and (max-width: 450px) {
+                // display: none;
+                // position: absolute;
+                // z-index: 9;
             }
+        }
     
-            .selected-channel {
-                background-color: var(--background-block) !important;
-                color: white !important;
-            }
+        #menu {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            height: 100vh;
+            min-width: auto;
+            // background-color: var(--backround);
     
-            .selected-back {
-                border-radius: 25% !important;
-                transition: all .2s ease-in-out;
-            }
+            background-color: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(5px);
+            transition: right 0.4s;
+            right: 0%;
     
-            #dialog-nothing {
-                width: 250px;
-                padding: 5px;
-                border-radius: 25px;
-                background-color: rgba(0, 0, 0, 0.7);
-                display: flex;
-                justify-content: center;
-                align-items: center;
-                margin: auto;
-                user-select: none;
-                font-size: 18px;
-            }
-    
-            #dialog,
-            #dialog-nothing {
-                @media screen and (max-width: 450px) {
-                    // display: none;
-                    // position: absolute;
-                    // z-index: 9;
-                }
-            }
-    
-            #menu {
-                display: flex;
-                flex-direction: column;
-                align-items: center;
-                height: 100vh;
+            @media screen and (max-width: 450px) {
+                width: 100vw;
                 min-width: auto;
-                // background-color: var(--backround);
+                height: 100vh;
+                position: absolute;
+                // right: 100%;
     
-                background-color: rgba(0, 0, 0, 0.7);
-                backdrop-filter: blur(5px);
-                transition: right 0.4s;
-                right: 0%;
+                z-index: 9;
+            }
+    
+            #menu-error {
+                font-size: 20px;
+                margin-top: 20px;
+                text-align: center;
+                font-weight: 300;
+                color: rgba(255, 255, 255, .5);
+            }
+    
+            #menu-header {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                width: 100%;
+                margin-top: 20px;
+                padding: 0 35px;
     
                 @media screen and (max-width: 450px) {
-                    width: 100vw;
-                    min-width: auto;
-                    height: 100vh;
-                    position: absolute;
-                    // right: 100%;
-    
-                    z-index: 9;
+                    padding: 0 20px;
                 }
     
-                #menu-error {
-                    font-size: 20px;
-                    margin-top: 20px;
-                    text-align: center;
-                    font-weight: 300;
-                    color: rgba(255, 255, 255, .5);
+                #menu-header-title {
+                    font-size: 2em;
+                    font-weight: 500;
+                    flex-grow: 2;
+                    margin-left: 15px;
                 }
     
-                #menu-header {
+                #menu-header-avatar {
+                    height: 70px;
+                    width: 70px;
                     display: flex;
-                    justify-content: space-between;
+                    justify-content: center;
                     align-items: center;
-                    width: 100%;
-                    margin-top: 20px;
-                    padding: 0 35px;
+                    cursor: pointer;
     
-                    @media screen and (max-width: 450px) {
-                        padding: 0 20px;
+                    #menu-header-avatarBorder {
+                        width: 75px;
+                        height: 75px;
+                        border-radius: 100%;
+                        background: linear-gradient(90deg, rgba(219, 0, 255, 1) 0%, rgb(214, 155, 211) 100%);
+                        position: absolute;
                     }
     
-                    #menu-header-title {
-                        font-size: 2em;
-                        font-weight: 500;
-                        flex-grow: 2;
-                        margin-left: 15px;
-                    }
-    
-                    #menu-header-avatar {
-                        height: 70px;
-                        width: 70px;
-                        display: flex;
-                        justify-content: center;
-                        align-items: center;
-                        cursor: pointer;
-    
-                        #menu-header-avatarBorder {
-                            width: 75px;
-                            height: 75px;
-                            border-radius: 100%;
-                            background: linear-gradient(90deg, rgba(219, 0, 255, 1) 0%, rgb(214, 155, 211) 100%);
-                            position: absolute;
-                        }
-    
-                        #menu-header-avatarBorder-avatar {
-                            width: 100%;
-                            height: 100%;
-                            border-radius: 100%;
-                            background-size: cover;
-                            background-position: center;
-                            // z-index: 2;
-                            // position: absolute;
-                        }
-                    }
-                }
-    
-                #menu-search {
-                    width: 100%;
-                    height: 60px;
-                    display: flex;
-                    align-items: center;
-                    padding: 0 30px;
-                    margin-top: 20px;
-    
-                    @media screen and (max-width: 450px) {
-                        padding: 0 20px;
-                    }
-    
-                    input {
+                    #menu-header-avatarBorder-avatar {
                         width: 100%;
-                        height: 40px;
-                        border-radius: 10px;
-                        border: none;
-                        outline: none;
-                        padding-left: 10px;
-                        font-size: 15px;
-                        color: rgba(255, 255, 255, .5);
-                        background-color: var(--background-block);
-    
-                        &::placeholder {
-                            opacity: 1;
-                            transition: .2s;
-                            text-align: center;
-                        }
-    
-                        &:focus::placeholder {
-                            transition: .2s;
-                            opacity: 0;
-                        }
+                        height: 100%;
+                        border-radius: 100%;
+                        background-size: cover;
+                        background-position: center;
+                        // z-index: 2;
+                        // position: absolute;
                     }
                 }
+            }
     
-                #menu-switch {
+            #menu-search {
+                width: 100%;
+                height: 60px;
+                display: flex;
+                align-items: center;
+                padding: 0 30px;
+                margin-top: 20px;
+    
+                @media screen and (max-width: 450px) {
+                    padding: 0 20px;
+                }
+    
+                input {
                     width: 100%;
+                    height: 40px;
+                    border-radius: 10px;
+                    border: none;
+                    outline: none;
+                    padding-left: 10px;
+                    font-size: 15px;
+                    color: rgba(255, 255, 255, .5);
+                    background-color: var(--background-block);
+    
+                    &::placeholder {
+                        opacity: 1;
+                        transition: .2s;
+                        text-align: center;
+                    }
+    
+                    &:focus::placeholder {
+                        transition: .2s;
+                        opacity: 0;
+                    }
+                }
+            }
+    
+            #menu-switch {
+                width: 100%;
+                display: flex;
+                flex-direction: row;
+                align-items: center;
+                justify-content: center;
+                margin-top: 20px;
+                gap: 10px;
+    
+                @media screen and (max-width: 450px) {}
+    
+                .menu-switch-button {
                     display: flex;
                     flex-direction: row;
                     align-items: center;
                     justify-content: center;
-                    margin-top: 20px;
-                    gap: 10px;
+                    cursor: pointer;
+                    padding: 5px 10px;
+                    border-radius: 10px;
+                    background-color: var(--background-block-hover);
+                    color: rgba(255, 255, 255, .5);
+                    font-size: 15px;
+                    transition: all 0.2s;
     
-                    @media screen and (max-width: 450px) {}
+                    &:hover {
+                        background-color: var(--background-block);
+                        color: white !important;
+                    }
+                }
+            }
     
-                    .menu-switch-button {
-                        display: flex;
-                        flex-direction: row;
-                        align-items: center;
-                        justify-content: center;
-                        cursor: pointer;
-                        padding: 5px 10px;
-                        border-radius: 10px;
-                        background-color: var(--background-block-hover);
-                        color: rgba(255, 255, 255, .5);
-                        font-size: 15px;
-                        transition: all 0.2s;
+            #menu-body {
+                // width: 100%;
+                width: 100%;
+                height: 100%;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                margin-top: 20px;
+                overflow: auto;
     
-                        &:hover {
-                            background-color: var(--background-block);
-                            color: white !important;
-                        }
+                &::-webkit-scrollbar {
+                    width: 8px;
+    
+                    @media screen and (max-width: 450px) {
+                        width: 10px;
                     }
                 }
     
-                #menu-body {
-                    // width: 100%;
+                &::-webkit-scrollbar-thumb {
+                    background-color: rgba(0, 0, 0, .6);
+                    border-radius: 15px;
+                }
+    
+                @media screen and (max-width: 450px) {
                     width: 100%;
-                    height: 100%;
+                }
+    
+                .menu-body-dialog {
                     display: flex;
-                    flex-direction: column;
-                    align-items: center;
-                    margin-top: 20px;
-                    overflow: auto;
+                    flex-direction: row;
+                    justify-content: space-between;
+                    width: 95%;
+                    padding: 10px 10px;
+                    margin-bottom: 10px;
+                    cursor: pointer;
+                    transition: background-color 0.2s;
     
-                    &::-webkit-scrollbar {
-                        width: 8px;
-    
-                        @media screen and (max-width: 450px) {
-                            width: 10px;
-                        }
-                    }
-    
-                    &::-webkit-scrollbar-thumb {
-                        background-color: rgba(0, 0, 0, .6);
-                        border-radius: 15px;
-                    }
+                    border-radius: 25px;
+                    justify-content: center;
     
                     @media screen and (max-width: 450px) {
+                        border-radius: 0px;
                         width: 100%;
+                        padding: 10px 20px;
+    
                     }
     
-                    .menu-body-dialog {
+                    &:hover {
+                        background-color: rgba(255, 255, 255, .1);
+                    }
+    
+                    .menu-body-dialog-avatar {
+                        width: 70px;
+                        height: 70px;
+                        border-radius: 100%;
+                        flex-shrink: 0;
+                        background: url("https://i.ibb.co/yQ8TcWD/ezgif-4-bd8944caaa.gif");
+                        background-size: cover;
+                        background-position: center;
+                        // border: 1px solid rgba(255, 255, 255, .5);
+                    }
+    
+                    .menu-body-dialog-info {
+                        // width:60%;
                         display: flex;
-                        flex-direction: row;
-                        justify-content: space-between;
-                        width: 95%;
-                        padding: 10px 10px;
-                        margin-bottom: 10px;
-                        cursor: pointer;
-                        transition: background-color 0.2s;
-    
-                        border-radius: 25px;
+                        flex-direction: column;
+                        align-items: flex-start;
                         justify-content: center;
+                        margin-left: 15px;
+                        flex: 1;
+                        text-overflow: ellipsis;
+                        white-space: nowrap;
     
-                        @media screen and (max-width: 450px) {
-                            border-radius: 0px;
-                            width: 100%;
-                            padding: 10px 20px;
-    
-                        }
-    
-                        &:hover {
-                            background-color: rgba(255, 255, 255, .1);
-                        }
-    
-                        .menu-body-dialog-avatar {
-                            width: 70px;
-                            height: 70px;
-                            border-radius: 100%;
-                            flex-shrink: 0;
-                            background: url("https://i.ibb.co/yQ8TcWD/ezgif-4-bd8944caaa.gif");
-                            background-size: cover;
-                            background-position: center;
-                            // border: 1px solid rgba(255, 255, 255, .5);
-                        }
-    
-                        .menu-body-dialog-info {
-                            // width:60%;
+                        .menu-body-dialog-info-name {
+                            font-size: 20px;
+                            font-weight: 500;
                             display: flex;
-                            flex-direction: column;
-                            align-items: flex-start;
-                            justify-content: center;
-                            margin-left: 15px;
-                            flex: 1;
-                            text-overflow: ellipsis;
-                            white-space: nowrap;
+                            align-items: flex-end;
     
-                            .menu-body-dialog-info-name {
-                                font-size: 20px;
-                                font-weight: 500;
-                                display: flex;
-                                align-items: flex-end;
-    
-                                .menu-body-dialog-info-name-verifed {
-                                    padding: 10px;
-                                    background-image: url('/verifed.svg');
-                                    background-size: 100%;
-                                    background-repeat: no-repeat;
-                                    background-position: center;
-                                    width: 10px;
-                                    padding: 10px;
-                                    margin-left: 5px;
-                                }
-                            }
-    
-                            .menu-body-dialog-info-message {
-                                font-size: 16px;
-                                width: 230px;
-                                text-overflow: ellipsis;
-                                color: rgba(255, 255, 255, .5);
-                                overflow: hidden;
-                            }
-                        }
-    
-                        .menu-body-dialog-time {
-                            font-size: 13px;
-                            color: rgba(255, 255, 255, 0.5);
-                            display: flex;
-                            align-items: flex-start;
-                            flex: 0;
-                            min-width: 30px;
-                            text-align: right;
-                            justify-content: flex-end;
-    
-                            .menu-body-dialog-time-time {
-                                text-wrap: nowrap;
-                            }
-    
-                            .menu-body-dialog-checked {
-                                background-image: url('/checked.svg');
+                            .menu-body-dialog-info-name-verifed {
+                                padding: 10px;
+                                background-image: url('/verifed.svg');
                                 background-size: 100%;
                                 background-repeat: no-repeat;
                                 background-position: center;
                                 width: 10px;
                                 padding: 10px;
-                                margin-right: 5px;
+                                margin-left: 5px;
                             }
                         }
     
+                        .menu-body-dialog-info-message {
+                            font-size: 16px;
+                            width: 230px;
+                            text-overflow: ellipsis;
+                            color: rgba(255, 255, 255, .5);
+                            overflow: hidden;
+                        }
                     }
     
-                    .menu-body-sep {
+                    .menu-body-dialog-time {
+                        font-size: 13px;
+                        color: rgba(255, 255, 255, 0.5);
                         display: flex;
-                        flex-direction: column;
-                        align-items: center;
-                        margin: 15px 0;
-                        width: 100%;
+                        align-items: flex-start;
+                        flex: 0;
+                        min-width: 30px;
+                        text-align: right;
+                        justify-content: flex-end;
     
-                        hr {
-                            width: 90%;
-                            color: red;
-                            margin-bottom: 15px;
+                        .menu-body-dialog-time-time {
+                            text-wrap: nowrap;
                         }
     
-                        span {
-                            color: rgba(255, 255, 255, .5);
-                            font-size: 15px;
+                        .menu-body-dialog-checked {
+                            background-image: url('/checked.svg');
+                            background-size: 100%;
+                            background-repeat: no-repeat;
+                            background-position: center;
+                            width: 10px;
+                            padding: 10px;
+                            margin-right: 5px;
                         }
+                    }
+                    .menu-body-dialog-pinned {
+                        display: flex;
+                        align-self: flex-end;
+                        background: url('/pin.svg');
+                        padding: 15px;
+                        background-size: 100%;
+                        background-repeat: no-repeat;
+                        background-position: center;
+                        width: 10px;
+                        padding: 7px;
+                    }
+                }
+    
+                .menu-body-sep {
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;
+                    margin: 15px 0;
+                    width: 100%;
+    
+                    hr {
+                        width: 90%;
+                        color: red;
+                        margin-bottom: 15px;
+                    }
+    
+                    span {
+                        color: rgba(255, 255, 255, .5);
+                        font-size: 15px;
                     }
                 }
             }
         }
+    }
 </style>

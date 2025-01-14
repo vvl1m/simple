@@ -85,6 +85,9 @@ watch ([nameAllowed, urlAllowed, avatarAllowed], () => {
     <div id="modal-channel-background">
         <div id="modal-channel-edit">
             <span>Создание канала</span>
+            <div class="modal-channel-edit-avatar">
+
+            </div>
             <div id="modal-channel-edit-form" >
                 <input v-model="nameChannel" type="text" id="nameChannelInput" class="modal-channel-edit-input" placeholder="Название канала" autocomplete="off">
                 <input v-model="urlChannel" type="text" id="urlChannelInput" class="modal-channel-edit-input" placeholder="Ссылка на канал" autocomplete="off">
@@ -121,6 +124,13 @@ watch ([nameAllowed, urlAllowed, avatarAllowed], () => {
             align-items: center;
             justify-content: center;
 
+            .modal-channel-edit-avatar {
+                width: 100px;
+                height: 100px;
+                border-radius: 100px;
+                background-color: white;
+                margin-top: 10px;
+            }
             span {
                 font-size: 24px;
                 font-weight: 600;
