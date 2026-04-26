@@ -1,75 +1,72 @@
-# Nuxt 3 Minimal Starter
+# Simple Messenger
 
-Look at the [Nuxt 3 documentation](https://nuxt.com/docs/getting-started/introduction) to learn more.
+![License](https://img.shields.io/github/license/vvl1m/simple)
+![Status](https://img.shields.io/badge/status-archived-red)
 
-## Setup
+**Simple** — это компактный и минималистичный мессенджер с поддержкой каналов и обмена медиафайлами.
 
-Make sure to install the dependencies:
+Проект создан как чистая и простая реализация базовых функций современных мессенджеров в режиме реального времени.
 
+> [!IMPORTANT]  
+> **Статус проекта:** Разработка приостановлена. Проект находится в стабильном состоянии ~~(по большей части)~~ **«as is»**.
+
+---
+
+## 🚀 Основные возможности
+
+- **Мгновенные сообщения** — обмен текстом в реальном времени через Supabase Realtime
+- **Каналы** — создание публичных и приватных пространств для общения
+- **Индикация онлайна** — просмотр, кто сейчас в сети (Presence)
+- **Профили пользователей** — авторизация и персонализированные аватарки
+- **Медиафайлы** — отправка, хранение и отображение фотографий в чатах
+
+---
+
+## 🛠 Технологический стек
+
+- **Frontend & Backend:** [Nuxt 3](https://nuxt.com/) (Fullstack)
+- **Backend as a Service:** [Supabase](https://supabase.com/) — Auth, Database, Realtime
+- **Хранение файлов:** Supabase Storage
+
+---
+
+## 📦 Установка и запуск
+
+### 1. Клонирование репозитория
 ```bash
-# npm
+git clone https://github.com/vvl1m/simple.git
+cd simple
+```
+
+### 2. Установка зависимостей
+```bash
 npm install
-
-# pnpm
-pnpm install
-
-# yarn
-yarn install
-
-# bun
-bun install
 ```
 
-## Development Server
+### 3. Настройка окружения
+Создайте файл .env в корне проекта и добавьте данные вашего Supabase-проекта:
+```env
+SUPABASE_URL=your_supabase_project_url
+SUPABASE_KEY=your_supabase_anon_key
+```
 
-Start the development server on `http://localhost:3000`:
-
+### 4. Запуск в режиме разработки
 ```bash
-# npm
 npm run dev
-
-# pnpm
-pnpm run dev
-
-# yarn
-yarn dev
-
-# bun
-bun run dev
 ```
 
-## Production
-
-Build the application for production:
-
+Приложение будет доступно по адресу: http://localhost:3000
+### Сборка для продакшена
 ```bash
-# npm
 npm run build
-
-# pnpm
-pnpm run build
-
-# yarn
-yarn build
-
-# bun
-bun run build
-```
-
-Locally preview production build:
-
-```bash
-# npm
 npm run preview
-
-# pnpm
-pnpm run preview
-
-# yarn
-yarn preview
-
-# bun
-bun run preview
 ```
+Собранные файлы появятся в папке .output/.
 
-Check out the [deployment documentation](https://nuxt.com/docs/getting-started/deployment) for more information.
+### Интерфейс
+WIP (в процессе разработки)
+
+### Лицензия
+Проект распространяется под лицензией MIT.
+Подробности смотрите в файле LICENSE.
+**Автор**: vvl1m
