@@ -42,7 +42,7 @@ async function sendMessage() {
                 const { data:checkAvaliability, error: erroCheck } = await supabase
                     .from('files_metadata')
                     .select('*')
-                if (checkAvaliability.length > 1) {
+                if (checkAvaliability.length > 5) {
                     throw new Error('Лимит по файлам превышен! (теперь файлы платные)');
                 }
                 const { data, error } = supabase
