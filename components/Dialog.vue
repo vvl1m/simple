@@ -28,7 +28,16 @@ const message = ref('');
 const checkViewChannel = ref(false);
 const channelId = ref('');
 
+const signedUrlCache = ref(new Map());
+const isSending = ref(false);
+
 async function sendMessage() {
+    if (isSending.value) {
+        console.warn('Сообщение уже отправляется');
+        return;
+    }
+
+    isSending.value = true;
     const fileInput = document.querySelector('#fileInput');
     const attachFiles = [];
 
@@ -39,12 +48,16 @@ async function sendMessage() {
                 console.log('file', file);
                 const timestamp = Date.now();
                 const uniqueFileName = `${timestamp}-${fileName}`;
-                const { data:checkAvaliability, error: erroCheck } = await supabase
+
+                const { count, error: countError } = await supabase
                     .from('files_metadata')
-                    .select('*')
-                if (checkAvaliability.length > 50) {
-                    throw new Error('Лимит по файлам превышен! (теперь файлы платные)');
+                    .select('*', { count: 'exact', head: true });
+
+                if (count >= 50) {
+                    alert('Достигнут лимит хранилища. Перейдите на Premium (как сука), чтобы загружать больше файлов! ✨');
+                    return;
                 }
+
                 const { data, error } = supabase
                     .storage
                     .from('attachs')
@@ -80,9 +93,13 @@ async function sendMessage() {
 
     if (message.value == '' && attachFiles.length == 0) {
         alert('Сообщение не может быть пустым');
+        isSending.value = false;
+        return;
     }
     else if (message.value.length > 1024) {
         alert('Сообщение слишком длинное');
+        isSending.value = false;
+        return;
     }
     else {
         const { data: messagesData, error } = await supabase
@@ -93,14 +110,29 @@ async function sendMessage() {
             .select('*');
         if (error) {
             console.error('Ошибка отправки сообщения: ', error);
+            isSending.value = false;
         } else {
             message.value = '';
+            isSending.value = false;
             loadMessages();
         }
     }
 }
 
 async function sendChannelMessage() {
+    if (isSending.value) {
+        console.warn('Сообщение уже отправляется, попытка двойной отправки заблокирована');
+        return;
+    }
+
+    isSending.value = true;
+
+    if (message.value.trim() === '') {
+        alert('Сообщение не может быть пустым');
+        isSending.value = false;
+        return;
+    }
+
     const { data: messagesData, error } = await supabase
         .from('messages')
         .insert(
@@ -110,11 +142,12 @@ async function sendChannelMessage() {
 
     if (error) {
         console.error('Ошибка отправки сообщения: ', error);
+        isSending.value = false;
     } else {
         message.value = '';
+        isSending.value = false;
         loadChannelData(props.userId);
     }
-
 }
 
 const getFileTest = async () => {
@@ -165,19 +198,42 @@ async function loadMessages() {
         const updatedDialogMessages = await Promise.all(dialogMessages.map(async (message) => {
             let attachs = message.attachs || [];
             attachs = await Promise.all(attachs.map(async (attach) => {
-                for (let i = 0; i < 3; i++) { 
-                    const { data: attachsData, error: attachsError } = await supabase
-                        .storage
-                        .from('attachs')
-                        .createSignedUrl(attach, 3600);
-                    if (!attachsError) {
-                        return attachsData;
-                    }
-                    console.error('Ошибка при загрузке файла:', attachsError.message);
+                if (signedUrlCache.value.has(attach)) {
+                    console.log('Используется кешированный URL для:', attach);
+                    return signedUrlCache.value.get(attach);
                 }
 
-                return "https://i.ibb.co/dmt4VkF/photo-2024-03-17-02-01-51.jpg";
+                try {
+                    for (let i = 0; i < 3; i++) {
+                        const { data: sessionData } = await supabase.auth.getSession();
+                        if (!sessionData.session) throw new Error("No session found");
+
+                        const { data: attachsData, error: attachsError } = await supabase
+                            .storage
+                            .from('attachs')
+                            .createSignedUrl(attach, 3600);
+
+                        if (attachsData?.signedUrl) {
+                            signedUrlCache.value.set(attach, attachsData);
+                            return attachsData;
+                        }
+
+                        if (attachsError?.status === 400) {
+                            console.error('Критическая ошибка запроса (400):', attachsError.message);
+                            break;
+                        }
+
+                        console.warn(`Попытка ${i + 1}/3...`, attachsError?.message);
+                        if (i < 2) await new Promise(r => setTimeout(r, 500));
+                    }
+                    return null;
+                } catch (err) {
+                    console.error('Ошибка:', err);
+                    return null;
+                }
             }));
+
+            attachs = attachs.filter(a => a !== null);
             return { ...message, attachs };
         }));
 
@@ -209,7 +265,11 @@ async function loadMessages() {
             }
         }
         // Сортировка сообщений по временной метке
-        allMessages.value = updatedDialogMessages.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+        allMessages.value = updatedDialogMessages.sort((a, b) => {
+            const timeA = new Date(a.created_at || a.timestamp || 0).getTime();
+            const timeB = new Date(b.created_at || b.timestamp || 0).getTime();
+            return timeA - timeB;
+        });
         //get username
         const { data: userChatData, error: userChatError } = await supabase
             .from('profiles')
@@ -258,7 +318,7 @@ async function checkOnline() {
                 }
                 else {
                     if (moment(moment()).diff(data.online_at, 'days') > 7) {
-                    onlineStatus.value = moment(data.online_at).fromNow() + ' (' + moment(data.online_at).format('DD.MM.YYYY') + ')';
+                        onlineStatus.value = moment(data.online_at).fromNow() + ' (' + moment(data.online_at).format('DD.MM.YYYY') + ')';
                     }
                     else if (moment(moment()).diff(data.online_at, 'minutes') >= 1) {
                         onlineStatus.value = moment(data.online_at).fromNow();
@@ -295,37 +355,37 @@ const haveAccessToWrite = ref(false);
 async function loadChannelData(channelId) {
     subscribed.value = false;
     try {
-        const { data:usersSub, error:usersSubError } = await supabase
-        .from('profiles')
-        .select('channels')
-        .eq('id', user.value.id)
-        .single();
+        const { data: usersSub, error: usersSubError } = await supabase
+            .from('profiles')
+            .select('channels')
+            .eq('id', user.value.id)
+            .single();
 
         console.log(usersSub);
-    if (usersSub.channels.includes(channelId)) {
-        subscribed.value = true;
-    }
+        if (usersSub.channels.includes(channelId)) {
+            subscribed.value = true;
+        }
 
-    const { data: channelsData, error } = await supabase
-        .from('channels')
-        .select('*')
-        .eq('id', channelId)
-        .single();
-    channel.value = channelsData;
-    if (channel.value.owner === user.value.id) {
-        haveAccessToWrite.value = true;
-    }
-    else {
-        haveAccessToWrite.value = false;
-    }
-    console.log(haveAccessToWrite.value);
+        const { data: channelsData, error } = await supabase
+            .from('channels')
+            .select('*')
+            .eq('id', channelId)
+            .single();
+        channel.value = channelsData;
+        if (channel.value.owner === user.value.id) {
+            haveAccessToWrite.value = true;
+        }
+        else {
+            haveAccessToWrite.value = false;
+        }
+        console.log(haveAccessToWrite.value);
 
-    const { data: channelMessages, error: channelMessagesError } = await supabase
-        .from('messages')
-        .select('*')
-        .eq('sender_id', channelId)
-        .order('timestamp', { ascending: true });
-    allChannelMessages.value = channelMessages;
+        const { data: channelMessages, error: channelMessagesError } = await supabase
+            .from('messages')
+            .select('*')
+            .eq('sender_id', channelId)
+            .order('created_at', { ascending: true });
+        allChannelMessages.value = channelMessages;
     }
     catch (error) {
         console.error('Ошибка загрузки данных: ', error);
@@ -340,6 +400,8 @@ async function loadChannelData(channelId) {
 const pat = /(https?:\/\/[^\s]+)/;
 watch(() => props.userId, (newUserId) => {
     if (newUserId) {
+        signedUrlCache.value.clear();
+
         if (props.isChannel == true) {
             loadChannelData(newUserId);
         }
@@ -390,13 +452,13 @@ const blur = ref(await localForage.getItem('blur'));
 const channel = ref([]);
 const allChannelMessages = ref([]);
 
-const subOnChannel = async () => {    
-    const { data:usersSub, error:usersSubError } = await supabase
+const subOnChannel = async () => {
+    const { data: usersSub, error: usersSubError } = await supabase
         .from('profiles')
         .select('channels')
         .eq('id', user.value.id)
         .single();
-    const {data: channelsData, error: channelsError } = await supabase
+    const { data: channelsData, error: channelsError } = await supabase
         .from('channels')
         .select('subs')
         .eq('id', props.userId)
@@ -437,7 +499,7 @@ const subOnChannel = async () => {
 
 }
 const editMessageOn = ref(false);
-const openEditMessage = async (msgID,textMessage) => {
+const openEditMessage = async (msgID, textMessage) => {
     editMessageOn.value = true;
     message.value = textMessage;
 
@@ -472,17 +534,23 @@ const confirmEditMessage = async (msgID) => {
 
     loadMessages();
 }
+
+const closeDialog = () => {
+    signedUrlCache.value.clear();
+    emit('close');
+};
 </script>
 
 <template>
     <ModalsPicture v-if="checkUrl" :picUrl="Url" @closePic="checkUrl = false"></ModalsPicture>
     <ModalsUser v-if="checkUser" :userId="userID" @closeUser="checkUser = false"></ModalsUser>
     <ModalsAttachs v-if="checkAttachs" :attachsArr="allMessages" @closeAttachs="checkAttachs = false"></ModalsAttachs>
-    <ModalsViewChannel v-if="checkViewChannel" :channelId="channelId" @closeChannel ="checkViewChannel = false"></ModalsViewChannel>
+    <ModalsViewChannel v-if="checkViewChannel" :channelId="channelId" @closeChannel="checkViewChannel = false">
+    </ModalsViewChannel>
 
     <div v-if="props.isChannel === false" id="dialog">
         <div id="dialog-header" :style="{ backdropFilter: blur ? 'blur(5px)' : 'none' }">
-            <div id="dialog-header-back" @click="emit('close');" style="font-size: 25px; cursor: pointer;"></div>
+            <div id="dialog-header-back" @click="closeDialog();" style="font-size: 25px; cursor: pointer;"></div>
             <!-- <div id="dialog-header-avatarBorder"> -->
             <div id="dialog-header-avatarBorder" :style="{ backgroundImage: `url(${avatar})` }"
                 @click="Url = avatar, checkUrl = true"></div>
@@ -524,46 +592,42 @@ const confirmEditMessage = async (msgID) => {
                         <div class="dialog-body-messages-info">
                             <span class="dialog-body-messages-info-name"
                                 @click="checkUser = true, userID = msg.sender_id">{{ msg.receiver_id === user.id ?
-                                userChat : user.user_metadata.username }}</span>
+                                    userChat : user.user_metadata.username }}</span>
                             <span class="dialog-body-messages-info-date"
-                                :title="moment(msg.timestamp).format('DD.MM.YYYY HH:mm')">{{
-                                moment(msg.timestamp).format('HH:mm') }}</span>
+                                :title="moment(msg.created_at || msg.timestamp).format('DD.MM.YYYY HH:mm')">{{
+                                    moment(msg.created_at || msg.timestamp).format('HH:mm') }}</span>
                             <span class="dialog-body-messages-info-status"
                                 v-show="msg.receiver_id != user.id && msg.read_status === true"></span>
                             <span class="dialog-body-messages-info-edit"
                                 v-show="msg.receiver_id != user.id && msg.showEdit"
-                                @click="openEditMessage(msg.id, msg.text)"
-                                v-if="!editMessageOn"
-                                >🖋️</span>
+                                @click="openEditMessage(msg.id, msg.text)" v-if="!editMessageOn">🖋️</span>
 
                         </div>
 
                         <div class="dialog-body-messages-message">
                             <span class="dialog-body-messages-info-message-text">{{ msg.text }}</span>
-                            
-                            <img class="dialog-body-messages-info-message-img" v-for="pat in msg.attachs"
-                                :src="pat.signedUrl" @click="Url = pat.signedUrl, checkUrl = true">
 
-                            <img class="dialog-body-messages-info-message-img"
-                                v-if="msg.text.match(/\.(jpeg|jpg|gif|png|webp)$/) != null"
-                                @click="Url = getPinnedImgUrl($event), checkUrl = true" @error="imageError"
-                                :src="pat.exec(msg.text)[0]">
+                            <img class="dialog-body-messages-info-message-img" v-for="pat in msg.attachs"
+                                :key="pat.signedUrl" :src="pat.signedUrl" @click="Url = pat.signedUrl, checkUrl = true"
+                                @error="imageError">
                         </div>
                     </div>
                 </TransitionGroup>
             </div>
         </div>
 
-        <div class="dialog-body-chat" :style="{ backdropFilter: blur ? 'blur(5px)' : 'none'}">
+        <div class="dialog-body-chat" :style="{ backdropFilter: blur ? 'blur(5px)' : 'none' }">
             <div class="dialog-body-chat-attachs" @click="checkAttachsFunc()"></div>
             <div>
                 <input id="fileInput" type="file" accept="image/*" multiple>
                 <label for="fileInput" id="dialog-body-chat-attach"></label>
             </div>
 
-            <input type="text" placeholder="Введите текст" v-model="message" @keyup.enter="sendMessage">
+            <input type="text" placeholder="Введите текст" v-model="message" @keyup.enter="sendMessage"
+                :disabled="isSending">
 
-            <div v-if="!editMessageOn" id="dialog-body-chat-send" @click="sendMessage"></div>
+            <div v-if="!editMessageOn" id="dialog-body-chat-send" @click="sendMessage"
+                :style="{ opacity: isSending ? 0.5 : 1, cursor: isSending ? 'not-allowed' : 'pointer' }"></div>
             <div v-else id="dialog-body-chat-confirmEdit"></div>
         </div>
     </div>
@@ -571,7 +635,7 @@ const confirmEditMessage = async (msgID) => {
     <!-- CHANNEL DIALOG -->
     <div v-else id="dialog">
         <div id="dialog-header" :style="{ backdropFilter: blur ? 'blur(5px)' : 'none' }">
-            <div id="dialog-header-back" @click="emit('close');" style="font-size: 25px; cursor: pointer;"></div>
+            <div id="dialog-header-back" @click="closeDialog();" style="font-size: 25px; cursor: pointer;"></div>
             <!-- <div id="dialog-header-avatarBorder"> -->
             <div id="dialog-header-avatarBorder" :style="{ backgroundImage: `url(${channel?.avatar_url})` }"
                 @click="Url = channel?.avatar_url, checkUrl = true"></div>
@@ -582,7 +646,9 @@ const confirmEditMessage = async (msgID) => {
                     channel?.name_channel }}
                     <div v-if="channel?.official" id="dialog-header-info-name-verifed"></div>
                 </div>
-                <span id="dialog-header-info-status">{{channel?.subs.length === 1 ? channel?.subs.length + ' подписчик' : ''  || channel?.subs.length < 5 ? channel?.subs.length + ' подписчика' : channel?.subs.length + ' подписчиков'}}</span>
+                <span id="dialog-header-info-status">{{ channel?.subs.length === 1 ? channel?.subs.length + ' подписчик'
+                    : '' || channel?.subs.length < 5 ? channel?.subs.length + ' подписчика' : channel?.subs.length
+                        + ' подписчиков' }}</span>
             </div>
 
             <div id="dialog-header-menu">
@@ -600,41 +666,42 @@ const confirmEditMessage = async (msgID) => {
             <div id="dialog-body-messages">
                 <TransitionGroup name="list" tag="div">
                     <div class="dialog-body-messages-sender" v-for="msg in allChannelMessages" :key="msg.id"
-                        :style="{ 'background-color':'var(--blue)', 'align-self': 'flex-start' }">
+                        :style="{ 'background-color': 'var(--blue)', 'align-self': 'flex-start' }">
                         <div class="dialog-body-messages-info">
                             <!-- <div class="dialog-body-messages-info-avatar" :style="{ backgroundImage: `url(${user.user_metadata.avatar_url})` }"></div> -->
                             <span class="dialog-body-messages-info-name"
-                                @click="channelId = channel?.id; checkViewChannel = true">{{ channel?.name_channel}}</span>
+                                @click="channelId = channel?.id; checkViewChannel = true">{{
+                                    channel?.name_channel }}</span>
                             <span class="dialog-body-messages-info-date"
-                                :title="moment(msg.timestamp).format('DD.MM.YYYY HH:mm')">{{
-                                moment(msg.timestamp).format('HH:mm') }}</span>
+                                :title="moment(msg.created_at || msg.timestamp).format('DD.MM.YYYY HH:mm')">{{
+                                    moment(msg.created_at || msg.timestamp).format('HH:mm') }}</span>
 
                         </div>
 
                         <div class="dialog-body-messages-message">
                             <span class="dialog-body-messages-info-message-text">{{ msg.text }}</span>
 
-                            <!-- <img class="dialog-body-messages-info-message-img" v-for="pat in msg.attachs" :src="pat.signedUrl" @click="Url = pat.signedUrl, checkUrl = true">
-                            
-                            <img class="dialog-body-messages-info-message-img"
-                                v-if="msg.text.match(/\.(jpeg|jpg|gif|png|webp)$/) != null"
-                                @click="Url = getPinnedImgUrl($event), checkUrl = true" @error="imageError"
-                                :src="pat.exec(msg.text)[0]"> -->
+                            <img class="dialog-body-messages-info-message-img" v-for="pat in msg.attachs"
+                                :key="pat.signedUrl" :src="pat.signedUrl" @click="Url = pat.signedUrl, checkUrl = true"
+                                @error="imageError">
                         </div>
                     </div>
                 </TransitionGroup>
             </div>
         </div>
 
-        <div v-if="haveAccessToWrite == true" class="dialog-body-chat" :style="{ backdropFilter: blur ? 'blur(5px)' : 'none'}">
+        <div v-if="haveAccessToWrite == true" class="dialog-body-chat"
+            :style="{ backdropFilter: blur ? 'blur(5px)' : 'none' }">
             <div class="dialog-body-chat-attachs" @click="checkAttachsFunc()"></div>
             <div>
                 <input id="fileInput" type="file" accept="image/*" multiple>
                 <label for="fileInput" id="dialog-body-chat-attach"></label>
             </div>
 
-            <input type="text" placeholder="Введите текст" v-model="message" @keyup.enter="sendChannelMessage">
-            <div id="dialog-body-chat-send" @click="sendChannelMessage"></div>
+            <input type="text" placeholder="Введите текст" v-model="message" @keyup.enter="sendChannelMessage"
+                :disabled="isSending">
+            <div id="dialog-body-chat-send" @click="sendChannelMessage"
+                :style="{ opacity: isSending ? 0.5 : 1, cursor: isSending ? 'not-allowed' : 'pointer' }"></div>
         </div>
 
         <div v-else @click="subOnChannel" class="dialog-body-chat channel"
@@ -656,6 +723,7 @@ const confirmEditMessage = async (msgID) => {
     align-items: center;
     border-radius: 25px;
     cursor: pointer;
+
     span {
         font-size: 20px;
         font-weight: 400;
@@ -663,13 +731,16 @@ const confirmEditMessage = async (msgID) => {
         text-transform: uppercase;
     }
 }
+
 .channel {
     transition: .2s ease-in-out;
+
     &:hover {
         background-color: rgba(0, 0, 0, 0.8) !important;
         transition: .2s ease-in-out;
     }
 }
+
 .list-enter-active,
 .list-leave-active {
     transition: all .3s ease-in-out;
@@ -767,12 +838,14 @@ const confirmEditMessage = async (msgID) => {
                 display: flex;
                 flex-direction: row;
                 align-items: flex-end;
+
                 @media screen and (max-width: 450px) {
                     max-width: 85%;
                     overflow: hidden;
                     text-overflow: ellipsis;
                     text-wrap: nowrap;
                 }
+
                 #dialog-header-info-name-verifed {
                     padding: 10px;
                     background-image: url('/verifed.svg');
@@ -860,7 +933,8 @@ const confirmEditMessage = async (msgID) => {
             // margin-bottom: 10px;
             display: flex;
             flex-direction: column;
-        overflow-y: hidden;
+            overflow-y: hidden;
+
             .dialog-body-messages-sender {
                 max-width: 500px;
                 min-width: 200px;
@@ -949,10 +1023,12 @@ const confirmEditMessage = async (msgID) => {
                     @media screen and (max-width: 450px) {
                         max-width: 100%;
                     }
+
                     .dialog-body-messages-messages-message-img {
                         width: 100%;
 
                     }
+
                     .dialog-body-messages-info-message-text {
                         // width: 90%;
                         height: 100%;
@@ -1045,6 +1121,7 @@ const confirmEditMessage = async (msgID) => {
             background-position: center;
             cursor: pointer;
         }
+
         @media screen and (max-width: 450px) {
             padding: 0 10px;
         }
